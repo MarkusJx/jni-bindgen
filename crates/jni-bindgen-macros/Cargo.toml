@@ -1,0 +1,18 @@
+[package]
+name = "jni_bindgen_macros"
+version = "0.0.0"
+authors = ["Markus <28785953+MarkusJx@users.noreply.github.com>"]
+description = "A `cargo generate` template for quick-starting a procedural macro crate"
+keywords = ["template", "proc_macro", "procmacro"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1"
+proc-macro2 = "1.0"
+syn = { version = "2.0", features = ["derive", "full"] }
+convert_case = "0.6"
+indexmap = "2.0"
+

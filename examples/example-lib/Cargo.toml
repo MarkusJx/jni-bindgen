@@ -1,0 +1,9 @@
+[package]
+name = "example-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jni_bindgen_macros = { path = "../../crates/jni-bindgen-macros" }
+anyhow = "1"
+jni = "0.21"
