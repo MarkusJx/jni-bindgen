@@ -3,7 +3,10 @@ name = "example-lib"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
-jni_bindgen_macros = { path = "../../crates/jni-bindgen-macros" }
+jni-bindgen = { path = "../../crates/jni-bindgen" }
 anyhow = "1"
 jni = "0.21"

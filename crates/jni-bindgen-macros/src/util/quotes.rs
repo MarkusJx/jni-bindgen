@@ -15,8 +15,7 @@ pub fn this(struct_name: &TokenStream, ret_val: &TokenStream) -> TokenStream {
             }) {
                 Ok(this) => this,
                 Err(e) => {
-                    env.throw_new("java/lang/RuntimeException", e.to_string())
-                        .unwrap();
+                    let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
                     return #ret_val;
                 }
             };

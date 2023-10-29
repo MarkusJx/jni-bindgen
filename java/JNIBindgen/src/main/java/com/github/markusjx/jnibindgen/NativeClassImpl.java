@@ -10,4 +10,8 @@ public interface NativeClassImpl<T extends NativeClass> {
     default void destroyNative() {
         getInner().destroyNative();
     }
+
+    default long getPtr() {
+        return getInner().getPtr();
+    }
 }

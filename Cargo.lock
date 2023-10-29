@@ -57,7 +57,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "jni",
- "jni_bindgen_macros",
+ "jni-bindgen",
 ]
 
 [[package]]
@@ -93,13 +93,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "jni-sys"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
+name = "jni-bindgen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jni",
+ "jni-bindgen-macros",
+]
 
 [[package]]
-name = "jni_bindgen_macros"
+name = "jni-bindgen-macros"
 version = "0.0.0"
 dependencies = [
  "convert_case",
@@ -108,6 +111,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "jni-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
 
 [[package]]
 name = "log"

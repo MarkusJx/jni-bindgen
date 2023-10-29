@@ -25,6 +25,15 @@ pub fn expand(args: TokenStream, input: TokenStream) -> syn::Result<TokenStream>
                 }
             }
 
+            if let Ok(java_dir) = std::env::var("JNI_BINDGEN_OUT_DIR") {
+                let java_file = std::path::Path::new(&java_dir)
+                    .join(java_class.namespace.replace('.', "/"))
+                    .join(format!("{}.java", java_class.name));
+
+                std::fs::create_dir_all(java_file.parent().unwrap()).unwrap();
+                std::fs::write(java_file, java_class_decl).unwrap();
+            }
+
             Some(res)
         }
         _ => None,

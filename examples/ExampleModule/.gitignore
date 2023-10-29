@@ -1,0 +1,4 @@
+src/main/java/com/github/markusjx/generated
+*.log
+build/
+.gradle/

@@ -22,6 +22,10 @@ public abstract class NativeClass {
         return this.ptr != 0;
     }
 
+    public synchronized long getPtr() {
+        return this.ptr;
+    }
+
     public void destroyNative() {
         if (!isValid()) {
             throw new IllegalStateException("Native object already destroyed");

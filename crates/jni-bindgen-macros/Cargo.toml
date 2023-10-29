@@ -1,5 +1,5 @@
 [package]
-name = "jni_bindgen_macros"
+name = "jni-bindgen-macros"
 version = "0.0.0"
 authors = ["Markus <28785953+MarkusJx@users.noreply.github.com>"]
 description = "A `cargo generate` template for quick-starting a procedural macro crate"
@@ -11,7 +11,7 @@ proc-macro = true
 
 [dependencies]
 quote = "1"
-proc-macro2 = "1.0"
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
 syn = { version = "2.0", features = ["derive", "full"] }
 convert_case = "0.6"
 indexmap = "2.0"

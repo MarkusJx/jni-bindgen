@@ -3,8 +3,8 @@ extern crate proc_macro;
 use crate::util::expand;
 use proc_macro::TokenStream;
 
-mod util;
 mod codegen;
+mod util;
 
 #[proc_macro_attribute]
 pub fn jni(args: TokenStream, input: TokenStream) -> TokenStream {

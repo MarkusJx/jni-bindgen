@@ -16,8 +16,8 @@ pub fn outer_class(
     format!(
         r#"package {};
         
-        import com.github.markusjx.rust.NativeClass;
-        import com.github.markusjx.rust.NativeClassImpl;{}
+        import com.github.markusjx.jnibindgen.NativeClass;
+        import com.github.markusjx.jnibindgen.NativeClassImpl;{}
         
         public class {class_name} implements NativeClassImpl<{class_name}.{class_name}Native> {{
     private final {class_name}Native inner;
@@ -35,7 +35,7 @@ pub fn outer_class(
     }}"#,
         namespace,
         if throws {
-            "\nimport com.github.markusjx.rust.NativeExecutionException;"
+            "\nimport com.github.markusjx.jnibindgen.NativeExecutionException;"
         } else {
             ""
         },

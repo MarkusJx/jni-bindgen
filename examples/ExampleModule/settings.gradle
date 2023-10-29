@@ -1,0 +1,5 @@
+rootProject.name = 'ExampleModule'
+include ':JNIBindgen'
+project(':JNIBindgen').projectDir = new File('../../java/JNIBindgen')
+
+

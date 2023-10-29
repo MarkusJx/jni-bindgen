@@ -1,5 +1,5 @@
 use anyhow::bail;
-use jni_bindgen_macros::jni;
+use jni_bindgen::jni;
 
 struct RustStruct {
     value: String,
@@ -11,7 +11,32 @@ impl Drop for RustStruct {
     }
 }
 
-#[jni(namespace = "com.github.markusjx", load_lib = "java_native")]
+struct NativeStruct;
+
+#[jni(namespace = "com.github.markusjx.generated", load_lib = "example_lib")]
+impl NativeStruct {
+    #[jni(constructor)]
+    fn create() -> Self {
+        Self
+    }
+
+    #[jni]
+    fn get_rust_struct_value(rust_struct: &RustStruct) -> String {
+        rust_struct.value.clone()
+    }
+
+    #[jni]
+    fn set_rust_struct_value(rust_struct: &mut RustStruct, value: String) {
+        rust_struct.value = value;
+    }
+
+    #[jni]
+    fn get_rust_struct_value_opt(opt: Option<&RustStruct>) -> Option<String> {
+        opt.map(|s| s.value.clone())
+    }
+}
+
+#[jni(namespace = "com.github.markusjx.generated", load_lib = "example_lib")]
 impl RustStruct {
     #[jni(constructor, rename = "initSingle")]
     /// Create a new RustStruct with the given value
@@ -21,36 +46,58 @@ impl RustStruct {
         Self { value }
     }
 
-    #[jni(constructor)]
-    fn new2() -> Self {
-        Self {
-            value: "Hello World".to_string(),
-        }
-    }
-
-    #[jni(constructor)]
-    fn new3(_v1: String, _v2: String) -> anyhow::Result<Self> {
-        bail!("Error")
+    #[jni]
+    fn get_value(&self) -> String {
+        self.value.clone()
     }
 
     #[jni]
-    fn print(&self) {
-        println!("Value: {}", self.value);
+    fn get_string(opt: Option<String>) -> Option<String> {
+        opt
     }
 
     #[jni]
-    fn empty_func(_args_name: String) -> &'static str {
-        println!("Empty");
-        "args_name"
+    fn get_int(opt: Option<i32>) -> Option<i32> {
+        opt
     }
 
     #[jni]
-    fn with_result(&self) -> anyhow::Result<()> {
-        bail!("Error")
+    fn get_long(opt: Option<i64>) -> Option<i64> {
+        opt
     }
 
     #[jni]
-    fn numeric(&self, val: i32, _env: &mut jni::JNIEnv, _val2: String) -> i32 {
-        val + 1
+    fn get_float(opt: Option<f32>) -> Option<f32> {
+        opt
+    }
+
+    #[jni]
+    fn get_double(opt: Option<f64>) -> Option<f64> {
+        opt
+    }
+
+    #[jni]
+    fn get_bool(opt: Option<bool>) -> Option<bool> {
+        opt
+    }
+
+    #[jni]
+    fn get_byte(opt: Option<i8>) -> Option<i8> {
+        opt
+    }
+
+    #[jni]
+    fn get_char(opt: Option<u16>) -> Option<u16> {
+        opt
+    }
+
+    #[jni]
+    fn get_short(opt: Option<i16>) -> Option<i16> {
+        opt
+    }
+
+    #[jni]
+    fn throw_error(msg: String) -> anyhow::Result<()> {
+        bail!(msg)
     }
 }

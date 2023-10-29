@@ -58,8 +58,14 @@ impl JavaMethod {
 
     fn get_arg_names(&self) -> String {
         self.args
-            .keys()
-            .map(|n| n.to_case(Case::Camel))
+            .iter()
+            .filter_map(|(n, a)| {
+                if a.as_declaration().is_some() {
+                    Some(n.to_case(Case::Camel))
+                } else {
+                    None
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ")
     }
@@ -203,7 +209,7 @@ impl JavaMethod {
             .map(|(i, a)| {
                 let name = format!("j_arg_{i}");
                 let arg_name: TokenStream = format!("arg_{i}").parse()?;
-                let getter = a.as_jni_arg_getter(&name)?;
+                let getter = a.as_jni_arg_getter(&name, self.return_type.as_ref())?;
 
                 if let JNIArgGetter::Getter(getter) = getter {
                     Ok(Some(
@@ -227,10 +233,12 @@ impl JavaMethod {
             .filter(|a| !a.is_self())
             .enumerate()
             .map(|(i, a)| {
-                Ok(match a.as_jni_arg_getter("arg")? {
-                    JNIArgGetter::Getter(_) => format!("arg_{i}"),
-                    JNIArgGetter::ArgName(name) => name,
-                })
+                Ok(
+                    match a.as_jni_arg_getter("arg", self.return_type.as_ref())? {
+                        JNIArgGetter::Getter(_) => format!("arg_{i}"),
+                        JNIArgGetter::ArgName(name) => name,
+                    },
+                )
             })
             .collect::<syn::Result<Vec<_>>>()?
             .join(", ")
