@@ -1,4 +1,4 @@
-use crate::codegen::code::{load_library, outer_class, DESTRUCT};
+use crate::codegen::code::{inner_class, outer_class};
 use crate::codegen::java_method::JavaMethod;
 use crate::codegen::traits::{AsDeclaration, FromDeclaration};
 use crate::util::attrs::BindgenAttrs;
@@ -87,7 +87,11 @@ impl JavaClass {
             .join("\n")
             .parse()?;
 
-        let drop = quotes::drop_struct(base_name.parse()?, self.name.clone());
+        let drop = if !constructors.is_empty() {
+            quotes::drop_struct(base_name.parse()?, self.name.clone())
+        } else {
+            quote!()
+        };
 
         Ok(quote!(
             #methods
@@ -112,18 +116,13 @@ impl JavaClass {
 impl AsDeclaration for JavaClass {
     fn as_declaration(&self, _: bool) -> String {
         let mut methods_copy = self.methods.clone();
-        methods_copy.push(JavaMethod::drop_method());
+        if !self.constructors.is_empty() {
+            methods_copy.push(JavaMethod::drop_method());
+        }
         methods_copy.append(&mut self.constructors.clone());
 
-        let init_lib = if let Some(init) = self.attrs.load_lib() {
-            load_library(&init)
-        } else {
-            String::new()
-        };
-
-        let inner = format!(
-            "public static class {}Native extends NativeClass {{\n{init_lib}\n{}\n\n{}\n\n{DESTRUCT}}}",
-            self.name,
+        let inner = inner_class(
+            &self.name,
             methods_copy
                 .iter()
                 .map(|m| m.as_declaration(&self.name, false))
@@ -134,6 +133,7 @@ impl AsDeclaration for JavaClass {
                 .map(|m| m.as_constructor(&format!("{}Native", self.name), true))
                 .collect::<Vec<_>>()
                 .join("\n\t"),
+            self.attrs.load_lib(),
         );
 
         outer_class(

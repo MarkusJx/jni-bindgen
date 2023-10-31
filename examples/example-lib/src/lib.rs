@@ -17,11 +17,6 @@ struct NativeStruct;
 
 #[jni(namespace = "com.github.markusjx.generated", load_lib = "example_lib")]
 impl NativeStruct {
-    #[jni(constructor)]
-    fn create() -> Self {
-        Self
-    }
-
     #[jni]
     fn get_rust_struct_value(rust_struct: &RustStruct) -> String {
         rust_struct.value.clone()
