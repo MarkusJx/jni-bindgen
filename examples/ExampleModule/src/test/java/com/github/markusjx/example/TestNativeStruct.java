@@ -118,4 +118,13 @@ public class TestNativeStruct {
 
         assertNull(NativeStruct.getHashmapOpt(null));
     }
+
+    @Test
+    public void testGetVecValues() {
+        var vec =
+                NativeStruct.getVecValues(List.of(new RustStruct("test"), new RustStruct("test2")));
+        assertEquals(2, vec.size());
+        assertEquals("test", vec.get(0));
+        assertEquals("test2", vec.get(1));
+    }
 }

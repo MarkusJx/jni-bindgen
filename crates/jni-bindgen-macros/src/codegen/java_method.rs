@@ -36,6 +36,17 @@ impl JavaMethod {
         }
     }
 
+    pub fn get_type_name() -> Self {
+        Self {
+            name: "getTypeName".to_string(),
+            original_name: "getTypeName".to_string(),
+            args: Default::default(),
+            return_type: Some(JavaType::String),
+            static_method: true,
+            _decl: None,
+        }
+    }
+
     pub fn get_imports(&self) -> HashSet<String> {
         let mut res = self
             .args

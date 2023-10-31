@@ -93,10 +93,13 @@ impl JavaClass {
             quote!()
         };
 
+        let get_type_name = quotes::get_type_name(base_name.parse()?, self.name.clone());
+
         Ok(quote!(
             #methods
             #constructors
             #drop
+            #get_type_name
         ))
     }
 
@@ -119,6 +122,7 @@ impl AsDeclaration for JavaClass {
         if !self.constructors.is_empty() {
             methods_copy.push(JavaMethod::drop_method());
         }
+        methods_copy.push(JavaMethod::get_type_name());
         methods_copy.append(&mut self.constructors.clone());
 
         let inner = inner_class(

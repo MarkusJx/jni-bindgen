@@ -69,3 +69,24 @@ pub fn drop_struct(base_name: TokenStream, struct_name: String) -> TokenStream {
         }
     )
 }
+
+pub fn get_type_name(base_name: TokenStream, struct_name: String) -> TokenStream {
+    let get_type_name: TokenStream = format!("{base_name}_getTypeName").parse().unwrap();
+    let struct_name: TokenStream = struct_name.parse().unwrap();
+
+    quote!(
+        #[no_mangle]
+        pub extern "system" fn #get_type_name<'local>(
+            mut env: jni::JNIEnv<'local>,
+            _class: jni::objects::JClass<'local>,
+        ) -> jni::sys::jstring {
+            match env.new_string(std::any::type_name::<#struct_name>()) {
+                Ok(name) => name.into_raw(),
+                Err(e) => {
+                    let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                    std::ptr::null_mut()
+                }
+            }
+        }
+    )
+}

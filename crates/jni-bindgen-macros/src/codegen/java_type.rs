@@ -191,6 +191,9 @@ impl JavaArg {
                             }
                         }
                     }
+                    JavaType::Wrapped(ty) => {
+                        quote!(Option::<jni_bindgen::objects::wrapped::Wrapped<#ty>>::from_jni(&mut env, #arg_name))
+                    }
                     _ => return Err(syn::Error::new(self.get_span(), "Unsupported option type")),
                 })
             },
@@ -219,6 +222,9 @@ impl JavaArg {
                     }
                 }
             },
+            JavaType::Wrapped(ty) => {
+                quote!(jni_bindgen::objects::wrapped::Wrapped::<#ty>::from_jni(&mut env, #arg_name))
+            }
             JavaType::Object => {
                 quote!(#arg_name)
             }
@@ -275,6 +281,7 @@ pub enum JavaType {
         mutable: bool,
         inner: TypePath,
     },
+    Wrapped(Type),
     Object,
     Vec {
         ty: Type,
@@ -361,6 +368,7 @@ impl JavaType {
                     java_key.as_declaration()?,
                     java_value.as_declaration()?
                 ),
+                JavaType::Wrapped(ty) => ty.into_token_stream().to_string(),
                 _ => panic!(
                     "Unsupported option type: {}",
                     ty.as_declaration().unwrap_or("Env".into())
@@ -369,6 +377,7 @@ impl JavaType {
             JavaType::Result(ty) => ty.as_declaration()?,
             JavaType::Env { .. } => return None,
             JavaType::Reference { inner, .. } => inner.into_token_stream().to_string(),
+            JavaType::Wrapped(ty) => ty.into_token_stream().to_string(),
             JavaType::Object => "Object".to_string(),
             JavaType::Vec { java_type, .. } => format!("List<{}>", java_type.as_declaration()?),
             JavaType::HashMap {
@@ -403,6 +412,7 @@ impl JavaType {
             JavaType::Result(ty) => ty.as_jni_return_type(),
             JavaType::Env { .. } => panic!("Env is not a valid Java type"),
             JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
+            JavaType::Wrapped(..) => panic!("Wrapped types cannot be returned"),
         }
     }
 
@@ -427,6 +437,7 @@ impl JavaType {
             JavaType::Result(ty) => ty.error_return_val(),
             JavaType::Env { .. } => panic!("Env is not a valid Java type"),
             JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
+            JavaType::Wrapped(..) => panic!("Wrapped types cannot be returned"),
         }
     }
 
@@ -547,6 +558,7 @@ impl JavaType {
                 _ => panic!("Unsupported option type"),
             }),
             JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
+            JavaType::Wrapped(..) => panic!("Wrapped types cannot be returned"),
             JavaType::Vec { ty, .. } => {
                 self.match_error(quote!(jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, res)))
             }
@@ -617,7 +629,7 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                     Type::Path(path) => {
                         if let Some(last) = path.path.segments.last() {
                             match last.ident.to_string().as_str() {
-                                "Result" | "Option" | "Vec" => {
+                                "Result" | "Option" | "Vec" | "Wrapped" => {
                                     if let syn::PathArguments::AngleBracketed(args) =
                                         &last.arguments
                                     {
@@ -648,6 +660,9 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                                                             ))?,
                                                         ),
                                                     })
+                                                }
+                                                "Wrapped" => {
+                                                    return Ok(JavaType::Wrapped(ty.clone()))
                                                 }
                                                 _ => unreachable!(),
                                             }

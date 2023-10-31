@@ -55,11 +55,15 @@ pub fn outer_class(
     {constructors}
 
     {methods}
+    
+    public static String getTypeName() {{
+        return {class_name}Native.getTypeName();
+    }}
 
     {get_inner}
 
     {inner}
-    }}"#,
+}}"#,
         namespace,
         additional_imports
             .into_iter()

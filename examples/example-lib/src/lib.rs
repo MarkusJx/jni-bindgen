@@ -1,6 +1,7 @@
 use anyhow::bail;
 use jni::objects::JObject;
 use jni_bindgen::jni;
+use jni_bindgen::objects::wrapped::Wrapped;
 use std::collections::HashMap;
 
 struct RustStruct {
@@ -55,6 +56,11 @@ impl NativeStruct {
     #[jni]
     fn get_hashmap_opt(opt: Option<HashMap<String, String>>) -> Option<HashMap<String, String>> {
         opt
+    }
+
+    #[jni]
+    fn get_vec_values(vec: Vec<Wrapped<RustStruct>>) -> Vec<String> {
+        vec.into_iter().map(|s| s.get_value()).collect()
     }
 }
 
