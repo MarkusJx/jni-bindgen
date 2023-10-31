@@ -1,10 +1,10 @@
 package com.github.markusjx.example;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.github.markusjx.generated.RustStruct;
 import com.github.markusjx.jnibindgen.NativeExecutionException;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 public class TestRustStruct {
     @Test
@@ -69,9 +69,9 @@ public class TestRustStruct {
 
     @Test
     public void testThrow() {
-        var msg = assertThrows(NativeExecutionException.class,
-                () -> RustStruct.throwError("test")
-        ).getMessage();
+        var msg =
+                assertThrows(NativeExecutionException.class, () -> RustStruct.throwError("test"))
+                        .getMessage();
         assertEquals("test", msg);
     }
 }

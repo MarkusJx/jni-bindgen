@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 pub const DESTRUCT: &str = r#"
     @Override
     protected void destruct() {
@@ -11,13 +13,14 @@ pub fn outer_class(
     methods: String,
     constructors: String,
     inner: String,
-    throws: bool,
+    additional_imports: HashSet<String>,
 ) -> String {
     format!(
         r#"package {};
         
         import com.github.markusjx.jnibindgen.NativeClass;
-        import com.github.markusjx.jnibindgen.NativeClassImpl;{}
+        import com.github.markusjx.jnibindgen.NativeClassImpl;
+        {}
         
         public class {class_name} implements NativeClassImpl<{class_name}.{class_name}Native> {{
     private final {class_name}Native inner;
@@ -34,11 +37,11 @@ pub fn outer_class(
     {inner}
     }}"#,
         namespace,
-        if throws {
-            "\nimport com.github.markusjx.jnibindgen.NativeExecutionException;"
-        } else {
-            ""
-        },
+        additional_imports
+            .into_iter()
+            .map(|i| format!("import {i};"))
+            .collect::<Vec<String>>()
+            .join("\n"),
     )
 }
 

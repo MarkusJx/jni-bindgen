@@ -8,6 +8,7 @@ use proc_macro2::Ident;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use quote::ToTokens;
+use std::collections::HashSet;
 use syn::{Expr, FnArg, Lit, PatType};
 use syn::{ImplItemFn, Meta};
 
@@ -33,6 +34,20 @@ impl JavaMethod {
             static_method: true,
             _decl: None,
         }
+    }
+
+    pub fn get_imports(&self) -> HashSet<String> {
+        let mut res = self
+            .args
+            .values()
+            .flat_map(|a| a.java_type.get_imports())
+            .collect::<HashSet<String>>();
+
+        if let Some(ret) = self.return_type.as_ref() {
+            res.extend(ret.get_imports());
+        }
+
+        res
     }
 
     fn get_name(arg: &FnArg) -> String {
@@ -278,13 +293,6 @@ impl JavaMethod {
                 #return_res
             }
         ))
-    }
-
-    pub fn throws(&self) -> bool {
-        self.return_type
-            .as_ref()
-            .map(|r| r.throws().is_some())
-            .unwrap_or_default()
     }
 
     fn get_comment(&self) -> Option<String> {

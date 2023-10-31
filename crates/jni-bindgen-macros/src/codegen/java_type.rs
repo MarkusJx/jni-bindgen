@@ -2,6 +2,7 @@ use crate::codegen::traits::FromDeclaration;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use quote::ToTokens;
+use std::collections::HashSet;
 use syn::spanned::Spanned;
 use syn::{FnArg, PatType, Type, TypePath};
 
@@ -65,8 +66,13 @@ impl JavaArg {
                     "Result is not a valid argument for a JNI method",
                 ))
             }
-            JavaType::Option(..) => quote!(jni::objects::JObject<'local>),
-            JavaType::Reference { .. } => quote!(jni::objects::JObject<'local>),
+            JavaType::Option(..)
+            | JavaType::Reference { .. }
+            | JavaType::Object
+            | JavaType::Vec { .. }
+            | JavaType::HashMap { .. } => {
+                quote!(jni::objects::JObject<'local>)
+            }
             rest => rest.as_jni_return_type(),
         }))
     }
@@ -167,6 +173,24 @@ impl JavaArg {
                             }
                         }
                     }
+                    JavaType::Vec{ty, ..} => {
+                        quote! {
+                            if #arg_name.is_null() {
+                                Ok(None)
+                            } else {
+                                jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, #arg_name).map(Some)
+                            }
+                        }
+                    }
+                    JavaType::HashMap { key, value, .. } => {
+                        quote! {
+                            if #arg_name.is_null() {
+                                Ok(None)
+                            } else {
+                                jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, #arg_name).map(Some)
+                            }
+                        }
+                    }
                     _ => return Err(syn::Error::new(self.get_span(), "Unsupported option type")),
                 })
             },
@@ -194,6 +218,19 @@ impl JavaArg {
                         }
                     }
                 }
+            },
+            JavaType::Object => {
+                quote!(#arg_name)
+            }
+            JavaType::Vec{ty, ..} => {
+                ret_ty.unwrap_or(&JavaType::Void).match_error(quote!(
+                    jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, #arg_name)
+                ))
+            }
+            JavaType::HashMap { key, value, .. } => {
+                ret_ty.unwrap_or(&JavaType::Void).match_error(quote!(
+                    jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, #arg_name)
+                ))
             }
         }))
     }
@@ -229,10 +266,26 @@ pub enum JavaType {
     Short,
     Char,
     Byte,
-    Env { mutable: bool },
+    Env {
+        mutable: bool,
+    },
     Result(Box<JavaType>),
     Option(Box<JavaType>),
-    Reference { mutable: bool, inner: TypePath },
+    Reference {
+        mutable: bool,
+        inner: TypePath,
+    },
+    Object,
+    Vec {
+        ty: Type,
+        java_type: Box<JavaType>,
+    },
+    HashMap {
+        key: Type,
+        value: Type,
+        java_key: Box<JavaType>,
+        java_value: Box<JavaType>,
+    },
 }
 
 impl JavaType {
@@ -242,6 +295,36 @@ impl JavaType {
         } else {
             None
         }
+    }
+
+    pub fn get_imports(&self) -> HashSet<String> {
+        let mut imports = HashSet::new();
+        match self {
+            JavaType::Vec { java_type, .. } => {
+                imports.insert("java.util.List".to_string());
+                imports.extend(java_type.get_imports());
+            }
+            JavaType::HashMap {
+                java_key,
+                java_value,
+                ..
+            } => {
+                imports.insert("java.util.Map".to_string());
+                imports.extend(java_key.get_imports());
+                imports.extend(java_value.get_imports());
+            }
+            JavaType::Option(java_type) => {
+                imports.extend(java_type.get_imports());
+            }
+            JavaType::Result(java_type) => {
+                imports
+                    .insert("com.github.markusjx.jnibindgen.NativeExecutionException".to_string());
+                imports.extend(java_type.get_imports());
+            }
+            _ => {}
+        }
+
+        imports
     }
 
     pub fn as_declaration(&self) -> Option<String> {
@@ -268,6 +351,16 @@ impl JavaType {
                 JavaType::Char => "Character".to_string(),
                 JavaType::Byte => "Byte".to_string(),
                 JavaType::Reference { inner, .. } => inner.into_token_stream().to_string(),
+                JavaType::Vec { java_type, .. } => format!("List<{}>", java_type.as_declaration()?),
+                JavaType::HashMap {
+                    java_key,
+                    java_value,
+                    ..
+                } => format!(
+                    "Map<{}, {}>",
+                    java_key.as_declaration()?,
+                    java_value.as_declaration()?
+                ),
                 _ => panic!(
                     "Unsupported option type: {}",
                     ty.as_declaration().unwrap_or("Env".into())
@@ -276,6 +369,17 @@ impl JavaType {
             JavaType::Result(ty) => ty.as_declaration()?,
             JavaType::Env { .. } => return None,
             JavaType::Reference { inner, .. } => inner.into_token_stream().to_string(),
+            JavaType::Object => "Object".to_string(),
+            JavaType::Vec { java_type, .. } => format!("List<{}>", java_type.as_declaration()?),
+            JavaType::HashMap {
+                java_key,
+                java_value,
+                ..
+            } => format!(
+                "Map<{}, {}>",
+                java_key.as_declaration()?,
+                java_value.as_declaration()?
+            ),
         })
     }
 
@@ -292,7 +396,10 @@ impl JavaType {
             JavaType::Short => quote!(jni::sys::jshort),
             JavaType::Char => quote!(jni::sys::jchar),
             JavaType::Byte => quote!(jni::sys::jbyte),
-            JavaType::Option(..) => quote!(jni::sys::jobject),
+            JavaType::Option(..)
+            | JavaType::Object
+            | JavaType::Vec { .. }
+            | JavaType::HashMap { .. } => quote!(jni::sys::jobject),
             JavaType::Result(ty) => ty.as_jni_return_type(),
             JavaType::Env { .. } => panic!("Env is not a valid Java type"),
             JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
@@ -301,7 +408,13 @@ impl JavaType {
 
     pub fn error_return_val(&self) -> TokenStream {
         match self {
-            JavaType::String | JavaType::Option(..) => quote!(std::ptr::null_mut()),
+            JavaType::String
+            | JavaType::Option(..)
+            | JavaType::Object
+            | JavaType::Vec { .. }
+            | JavaType::HashMap { .. } => {
+                quote!(std::ptr::null_mut())
+            }
             JavaType::This
             | JavaType::Integer
             | JavaType::Long
@@ -348,6 +461,7 @@ impl JavaType {
             JavaType::Short => quote!(res as jni::sys::jshort),
             JavaType::Char => quote!(res as jni::sys::jchar),
             JavaType::Byte => quote!(res as jni::sys::jbyte),
+            JavaType::Object => quote!(res.into_raw()),
             JavaType::Result(ty) => {
                 let ret = ty.as_jni_return_val();
                 let err = ty.error_return_val();
@@ -412,9 +526,33 @@ impl JavaType {
                         &mut env, res
                     ))
                 }
+                JavaType::Vec { ty, .. } => {
+                    quote! {
+                        if let Some(s) = res {
+                            jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, s)
+                        } else {
+                            Ok(std::ptr::null_mut())
+                        }
+                    }
+                }
+                JavaType::HashMap { key, value, .. } => {
+                    quote! {
+                        if let Some(s) = res {
+                            jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, s)
+                        } else {
+                            Ok(std::ptr::null_mut())
+                        }
+                    }
+                }
                 _ => panic!("Unsupported option type"),
             }),
             JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
+            JavaType::Vec { ty, .. } => {
+                self.match_error(quote!(jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, res)))
+            }
+            JavaType::HashMap { key, value, .. } => {
+                self.match_error(quote!(jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, res)))
+            }
         }
     }
 
@@ -478,29 +616,72 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                 match decl.as_ref() {
                     Type::Path(path) => {
                         if let Some(last) = path.path.segments.last() {
-                            if last.ident == "Result" || last.ident == "Option" {
-                                if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
-                                    if let Some(syn::GenericArgument::Type(ty)) = args.args.first()
+                            match last.ident.to_string().as_str() {
+                                "Result" | "Option" | "Vec" => {
+                                    if let syn::PathArguments::AngleBracketed(args) =
+                                        &last.arguments
                                     {
-                                        match last.ident.to_string().as_str() {
-                                            "Result" => {
-                                                return Ok(JavaType::Result(Box::new(
-                                                    JavaType::from_declaration(&Box::new(
-                                                        ty.clone(),
-                                                    ))?,
-                                                )))
+                                        if let Some(syn::GenericArgument::Type(ty)) =
+                                            args.args.first()
+                                        {
+                                            match last.ident.to_string().as_str() {
+                                                "Result" => {
+                                                    return Ok(JavaType::Result(Box::new(
+                                                        JavaType::from_declaration(&Box::new(
+                                                            ty.clone(),
+                                                        ))?,
+                                                    )))
+                                                }
+                                                "Option" => {
+                                                    return Ok(JavaType::Option(Box::new(
+                                                        JavaType::from_declaration(&Box::new(
+                                                            ty.clone(),
+                                                        ))?,
+                                                    )))
+                                                }
+                                                "Vec" => {
+                                                    return Ok(JavaType::Vec {
+                                                        ty: ty.clone(),
+                                                        java_type: Box::new(
+                                                            JavaType::from_declaration(&Box::new(
+                                                                ty.clone(),
+                                                            ))?,
+                                                        ),
+                                                    })
+                                                }
+                                                _ => unreachable!(),
                                             }
-                                            "Option" => {
-                                                return Ok(JavaType::Option(Box::new(
-                                                    JavaType::from_declaration(&Box::new(
-                                                        ty.clone(),
-                                                    ))?,
-                                                )))
-                                            }
-                                            _ => unreachable!(),
                                         }
                                     }
                                 }
+                                "JObject" => return Ok(JavaType::Object),
+                                "HashMap" => {
+                                    if let syn::PathArguments::AngleBracketed(args) =
+                                        &last.arguments
+                                    {
+                                        if let Some(syn::GenericArgument::Type(ty)) =
+                                            args.args.first()
+                                        {
+                                            if let Some(syn::GenericArgument::Type(ty2)) =
+                                                args.args.last()
+                                            {
+                                                return Ok(JavaType::HashMap {
+                                                    key: ty.clone(),
+                                                    value: ty2.clone(),
+                                                    java_key: Box::new(JavaType::from_declaration(
+                                                        &Box::new(ty.clone()),
+                                                    )?),
+                                                    java_value: Box::new(
+                                                        JavaType::from_declaration(&Box::new(
+                                                            ty2.clone(),
+                                                        ))?,
+                                                    ),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }

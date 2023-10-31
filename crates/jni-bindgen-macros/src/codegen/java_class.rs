@@ -7,6 +7,7 @@ use crate::util::traits::JniMethod;
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
+use std::collections::HashSet;
 use syn::{ImplItem, ItemImpl};
 
 pub struct JavaClass {
@@ -94,6 +95,18 @@ impl JavaClass {
             #drop
         ))
     }
+
+    fn get_imports(&self) -> HashSet<String> {
+        let mut imports = self
+            .methods
+            .iter()
+            .flat_map(|m| m.get_imports())
+            .collect::<HashSet<String>>();
+
+        imports.extend(self.constructors.iter().flat_map(|m| m.get_imports()));
+
+        imports
+    }
 }
 
 impl AsDeclaration for JavaClass {
@@ -107,9 +120,6 @@ impl AsDeclaration for JavaClass {
         } else {
             String::new()
         };
-
-        let throws =
-            self.methods.iter().any(|m| m.throws()) || self.constructors.iter().any(|m| m.throws());
 
         let inner = format!(
             "public static class {}Native extends NativeClass {{\n{init_lib}\n{}\n\n{}\n\n{DESTRUCT}}}",
@@ -140,7 +150,7 @@ impl AsDeclaration for JavaClass {
                 .collect::<Vec<_>>()
                 .join("\n"),
             inner,
-            throws,
+            self.get_imports(),
         )
     }
 }

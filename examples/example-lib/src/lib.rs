@@ -1,5 +1,7 @@
 use anyhow::bail;
+use jni::objects::JObject;
 use jni_bindgen::jni;
+use std::collections::HashMap;
 
 struct RustStruct {
     value: String,
@@ -33,6 +35,31 @@ impl NativeStruct {
     #[jni]
     fn get_rust_struct_value_opt(opt: Option<&RustStruct>) -> Option<String> {
         opt.map(|s| s.value.clone())
+    }
+
+    #[jni]
+    fn get_obj(obj: JObject) -> JObject {
+        obj
+    }
+
+    #[jni]
+    fn get_vec(vec: Vec<String>) -> Vec<String> {
+        vec
+    }
+
+    #[jni]
+    fn get_vec_opt(opt: Option<Vec<String>>) -> Option<Vec<String>> {
+        opt
+    }
+
+    #[jni]
+    fn get_hashmap(map: HashMap<String, String>) -> HashMap<String, String> {
+        map
+    }
+
+    #[jni]
+    fn get_hashmap_opt(opt: Option<HashMap<String, String>>) -> Option<HashMap<String, String>> {
+        opt
     }
 }
 
