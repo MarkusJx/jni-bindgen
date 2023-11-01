@@ -74,4 +74,16 @@ public class TestRustStruct {
                         .getMessage();
         assertEquals("test", msg);
     }
+
+    @Test
+    public void testThrowOther() throws Exception {
+        var msg =
+                assertThrows(
+                                InterruptedException.class,
+                                () ->
+                                        RustStruct.throwOtherError(
+                                                InterruptedException.class.getName(), "test"))
+                        .getMessage();
+        assertEquals("test", msg);
+    }
 }

@@ -1,7 +1,7 @@
 use jni::objects::JString;
 macro_rules! impl_option_into_jni {
     ($t:ty, $to: ident, $from: ident, $cls: expr, $constructor: expr, $getter: expr, $get_fn: ident) => {
-        pub fn $to(env: &mut jni::JNIEnv, val: Option<$t>) -> anyhow::Result<jni::sys::jobject> {
+        pub fn $to(env: &mut jni::JNIEnv, val: Option<$t>) -> crate::Result<jni::sys::jobject> {
             Ok(match val {
                 Some(val) => env
                     .call_static_method(
@@ -19,7 +19,7 @@ macro_rules! impl_option_into_jni {
         pub fn $from(
             env: &mut jni::JNIEnv,
             val: jni::objects::JObject,
-        ) -> anyhow::Result<Option<$t>> {
+        ) -> crate::Result<Option<$t>> {
             Ok(if val.is_null() {
                 None
             } else {
@@ -108,7 +108,7 @@ impl_option_into_jni!(
 pub fn string_into_jni(
     env: &mut jni::JNIEnv,
     val: Option<String>,
-) -> anyhow::Result<jni::sys::jobject> {
+) -> crate::Result<jni::sys::jobject> {
     Ok(match val {
         Some(val) => env.new_string(val)?.into_raw(),
         None => std::ptr::null_mut(),
@@ -118,7 +118,7 @@ pub fn string_into_jni(
 pub fn string_from_jni(
     env: &mut jni::JNIEnv,
     val: jni::objects::JObject,
-) -> anyhow::Result<Option<String>> {
+) -> crate::Result<Option<String>> {
     Ok(if val.is_null() {
         None
     } else {

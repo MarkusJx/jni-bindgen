@@ -36,12 +36,12 @@ impl JavaMethod {
         }
     }
 
-    pub fn get_type_name() -> Self {
+    pub fn get_type_hash() -> Self {
         Self {
-            name: "getTypeName".to_string(),
-            original_name: "getTypeName".to_string(),
+            name: "getTypeHash".to_string(),
+            original_name: "getTypeHash".to_string(),
             args: Default::default(),
-            return_type: Some(JavaType::String),
+            return_type: Some(JavaType::Long),
             static_method: true,
             _decl: None,
         }
@@ -297,6 +297,7 @@ impl JavaMethod {
                 #class_or_this,
                 #j_args
             ) #ret {
+                use jni_bindgen::objects::traits::IntoJNIResult;
                 #this
                 #arg_converters
 

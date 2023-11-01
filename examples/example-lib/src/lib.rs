@@ -1,7 +1,9 @@
 use anyhow::bail;
 use jni::objects::JObject;
+use jni_bindgen::errors::jni_error::ErrorClass;
 use jni_bindgen::jni;
 use jni_bindgen::objects::wrapped::Wrapped;
+use std::any::TypeId;
 use std::collections::HashMap;
 
 struct RustStruct {
@@ -127,5 +129,10 @@ impl RustStruct {
     #[jni]
     fn throw_error(msg: String) -> anyhow::Result<()> {
         bail!(msg)
+    }
+
+    #[jni]
+    fn throw_other_error(err: String, msg: String) -> jni_bindgen::Result<()> {
+        jni_bindgen::bail!(ErrorClass::Any(err.replace('.', "/")), "{msg}")
     }
 }

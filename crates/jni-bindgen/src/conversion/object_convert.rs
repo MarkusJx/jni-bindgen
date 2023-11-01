@@ -1,5 +1,5 @@
 use crate::conversion::option_convert::*;
-use crate::conversion::traits::{FromJNI, IntoJNI};
+use crate::objects::traits::{FromJNI, IntoJNI};
 use jni::objects::{JObject, JString};
 use jni::sys::jobject;
 use jni::JNIEnv;
@@ -9,25 +9,25 @@ use std::hash::Hash;
 macro_rules! impl_convert {
     ($ty: ty, $from: ident, $to: ident) => {
         impl FromJNI<'_> for $ty {
-            fn from_jni(env: &mut JNIEnv, obj: JObject) -> anyhow::Result<Self> {
-                $from(env, obj)?.ok_or(anyhow::anyhow!("The value is null"))
+            fn from_jni(env: &mut JNIEnv, obj: JObject) -> crate::Result<Self> {
+                $from(env, obj)?.ok_or(crate::error!("The value is null"))
             }
         }
 
         impl IntoJNI for $ty {
-            fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+            fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
                 Ok(unsafe { JObject::from_raw($to(env, Some(self))?) })
             }
         }
 
         impl FromJNI<'_> for Option<$ty> {
-            fn from_jni(env: &mut JNIEnv, obj: JObject) -> anyhow::Result<Self> {
+            fn from_jni(env: &mut JNIEnv, obj: JObject) -> crate::Result<Self> {
                 $from(env, obj)
             }
         }
 
         impl IntoJNI for Option<$ty> {
-            fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+            fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
                 Ok(unsafe { JObject::from_raw($to(env, self)?) })
             }
         }
@@ -45,37 +45,37 @@ impl_convert!(i8, i8_from_jni, i8_into_jni);
 impl_convert!(u16, u16_from_jni, u16_into_jni);
 
 impl<'local> FromJNI<'local> for JObject<'local> {
-    fn from_jni(_: &mut JNIEnv<'local>, obj: JObject) -> anyhow::Result<Self> {
+    fn from_jni(_: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self> {
         Ok(unsafe { JObject::from_raw(*obj) })
     }
 }
 
 impl IntoJNI for JObject<'_> {
-    fn into_jni<'a>(self, _: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+    fn into_jni<'a>(self, _: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
         Ok(unsafe { JObject::from_raw(*self) })
     }
 }
 
 impl<'local> FromJNI<'local> for JString<'local> {
-    fn from_jni(_: &mut JNIEnv<'local>, obj: JObject) -> anyhow::Result<Self> {
+    fn from_jni(_: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self> {
         Ok(unsafe { JString::from(JObject::from_raw(*obj)) })
     }
 }
 
 impl IntoJNI for JString<'_> {
-    fn into_jni<'a>(self, _: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+    fn into_jni<'a>(self, _: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
         Ok(unsafe { JObject::from_raw(self.as_raw()) })
     }
 }
 
 impl<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>> FromJNI<'local> for HashMap<K, V> {
-    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> anyhow::Result<Self> {
+    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self> {
         into_hashmap(env, obj)
     }
 }
 
 impl<K: IntoJNI + Eq + Hash, V: IntoJNI> IntoJNI for HashMap<K, V> {
-    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
         Ok(unsafe { JObject::from_raw(from_hashmap(env, self)?) })
     }
 }
@@ -83,7 +83,7 @@ impl<K: IntoJNI + Eq + Hash, V: IntoJNI> IntoJNI for HashMap<K, V> {
 impl<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>> FromJNI<'local>
     for Option<HashMap<K, V>>
 {
-    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> anyhow::Result<Self> {
+    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self> {
         match obj.is_null() {
             true => Ok(None),
             false => Ok(Some(into_hashmap(env, obj)?)),
@@ -92,7 +92,7 @@ impl<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>> FromJNI<'local>
 }
 
 impl<K: IntoJNI + Eq + Hash, V: IntoJNI> IntoJNI for Option<HashMap<K, V>> {
-    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
         match self {
             Some(map) => Ok(unsafe { JObject::from_raw(from_hashmap(env, map)?) }),
             None => Ok(JObject::null()),
@@ -101,19 +101,19 @@ impl<K: IntoJNI + Eq + Hash, V: IntoJNI> IntoJNI for Option<HashMap<K, V>> {
 }
 
 impl<'local, T: FromJNI<'local>> FromJNI<'local> for Vec<T> {
-    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> anyhow::Result<Self> {
+    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self> {
         into_vec(env, obj)
     }
 }
 
 impl<T: IntoJNI> IntoJNI for Vec<T> {
-    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
         Ok(unsafe { JObject::from_raw(from_vec(env, self)?) })
     }
 }
 
 impl<'local, T: FromJNI<'local>> FromJNI<'local> for Option<Vec<T>> {
-    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> anyhow::Result<Self> {
+    fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self> {
         match obj.is_null() {
             true => Ok(None),
             false => Ok(Some(into_vec(env, obj)?)),
@@ -122,7 +122,7 @@ impl<'local, T: FromJNI<'local>> FromJNI<'local> for Option<Vec<T>> {
 }
 
 impl<T: IntoJNI> IntoJNI for Option<Vec<T>> {
-    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> anyhow::Result<JObject<'a>> {
+    fn into_jni<'a>(self, env: &mut JNIEnv<'a>) -> crate::Result<JObject<'a>> {
         match self {
             Some(vec) => Ok(unsafe { JObject::from_raw(from_vec(env, vec)?) }),
             None => Ok(JObject::null()),
@@ -133,7 +133,7 @@ impl<T: IntoJNI> IntoJNI for Option<Vec<T>> {
 pub fn into_hashmap<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>>(
     env: &mut JNIEnv<'local>,
     obj: JObject,
-) -> anyhow::Result<HashMap<K, V>> {
+) -> crate::Result<HashMap<K, V>> {
     let j_map = env.get_map(&obj)?;
     let mut iter = j_map.iter(env)?;
     let mut map = HashMap::new();
@@ -148,7 +148,7 @@ pub fn into_hashmap<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>>(
 pub fn from_hashmap<K: IntoJNI + Eq + Hash, V: IntoJNI>(
     env: &mut JNIEnv,
     map: HashMap<K, V>,
-) -> anyhow::Result<jobject> {
+) -> crate::Result<jobject> {
     let j_map = env.new_object("java/util/HashMap", "()V", &[])?;
 
     for (k, v) in map {
@@ -168,7 +168,7 @@ pub fn from_hashmap<K: IntoJNI + Eq + Hash, V: IntoJNI>(
 pub fn into_vec<'local, T: FromJNI<'local>>(
     env: &mut JNIEnv<'local>,
     obj: JObject,
-) -> anyhow::Result<Vec<T>> {
+) -> crate::Result<Vec<T>> {
     let j_vec = env.get_list(&obj)?;
     let mut iter = j_vec.iter(env)?;
     let mut vec = Vec::new();
@@ -180,7 +180,7 @@ pub fn into_vec<'local, T: FromJNI<'local>>(
     Ok(vec)
 }
 
-pub fn from_vec<T: IntoJNI>(env: &mut JNIEnv, vec: Vec<T>) -> anyhow::Result<jobject> {
+pub fn from_vec<T: IntoJNI>(env: &mut JNIEnv, vec: Vec<T>) -> crate::Result<jobject> {
     let j_vec = env.new_object("java/util/ArrayList", "()V", &[])?;
 
     for v in vec {

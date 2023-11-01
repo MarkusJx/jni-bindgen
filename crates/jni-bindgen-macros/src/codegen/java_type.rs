@@ -94,8 +94,8 @@ impl JavaArg {
             JavaType::String => {
                 ret_ty.unwrap_or(&JavaType::Void).match_error(quote! {
                     env.get_string(&#arg_name)
-                        .map_err(|e| e.to_string())
-                        .and_then(|s| s.to_str().map_err(|e| e.to_string()).map(|s| s.to_string()))
+                        .map(|s| s.into())
+                        .into_jni_result()
                 })
             },
             JavaType::Env { mutable } => {
@@ -444,19 +444,22 @@ impl JavaType {
     pub fn as_jni_return_val(&self) -> TokenStream {
         match self {
             JavaType::String => quote! {
-                match env.new_string(res) {
+                match env.new_string(res).into_jni_result() {
                     Ok(str) => str.into_raw(),
                     Err(e) => {
                         if env.exception_check().unwrap_or_default() {
                             return std::ptr::null_mut();
                         }
 
-                        let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                        println!("{:?}", e);
+                        e.throw(&mut env);
                         std::ptr::null_mut()
                     }
                 }
             },
-            JavaType::This => quote!(Box::into_raw(Box::new(res)) as jni::sys::jlong),
+            JavaType::This => quote!(
+                Box::into_raw(Box::new(res)) as jni::sys::jlong
+            ),
             JavaType::Void => quote!(()),
             JavaType::Integer => quote!(res as jni::sys::jint),
             JavaType::Long => quote!(res as jni::sys::jlong),
@@ -477,14 +480,16 @@ impl JavaType {
                 let ret = ty.as_jni_return_val();
                 let err = ty.error_return_val();
                 quote! {
-                    match res {
+                    match res.into_jni_result()
+                        .map_err(|e| e.or_class(jni_bindgen::errors::jni_error::ErrorClass::NativeExecutionException))
+                    {
                         Ok(res) => #ret,
                         Err(e) => {
                             if env.exception_check().unwrap_or_default() {
                                 return #err;
                             }
 
-                            let _ = env.throw_new("com/github/markusjx/jnibindgen/NativeExecutionException", e.to_string());
+                            e.throw(&mut env);
                             #err
                         }
                     }
@@ -580,14 +585,14 @@ impl JavaType {
         let error_return_val = self.error_return_val();
 
         quote! {
-            match #inner {
+            match #inner.into_jni_result() {
                 Ok(res) => res,
                 Err(e) => {
                     if env.exception_check().unwrap_or_default() {
                         return #error_return_val;
                     }
 
-                    let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                    e.throw(&mut env);
                     return #error_return_val;
                 }
             }

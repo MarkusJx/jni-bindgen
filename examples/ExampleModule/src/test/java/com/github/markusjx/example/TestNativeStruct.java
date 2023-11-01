@@ -43,7 +43,7 @@ public class TestNativeStruct {
 
         msg =
                 assertThrows(
-                                RuntimeException.class,
+                                NullPointerException.class,
                                 () -> NativeStruct.setRustStructValue(new RustStruct("test"), null))
                         .getMessage();
         assertEquals("Null pointer in get_object_class", msg);
@@ -81,7 +81,8 @@ public class TestNativeStruct {
     @Test
     public void testGetVecNull() {
         var msg =
-                assertThrows(RuntimeException.class, () -> NativeStruct.getVec(null)).getMessage();
+                assertThrows(NullPointerException.class, () -> NativeStruct.getVec(null))
+                        .getMessage();
         assertEquals("Null pointer in get_list obj argument", msg);
     }
 
@@ -95,7 +96,7 @@ public class TestNativeStruct {
     @Test
     public void testGetHashmapNull() {
         var msg =
-                assertThrows(RuntimeException.class, () -> NativeStruct.getHashmap(null))
+                assertThrows(NullPointerException.class, () -> NativeStruct.getHashmap(null))
                         .getMessage();
         assertEquals("Null pointer in get_map obj argument", msg);
     }
@@ -126,5 +127,18 @@ public class TestNativeStruct {
         assertEquals(2, vec.size());
         assertEquals("test", vec.get(0));
         assertEquals("test2", vec.get(1));
+    }
+
+    @Test
+    public void testGetVecValuesNull() {
+        var msg =
+                assertThrows(NullPointerException.class, () -> NativeStruct.getVecValues(null))
+                        .getMessage();
+        assertEquals("Null pointer in get_list obj argument", msg);
+    }
+
+    @Test
+    public void testGetTypeHash() {
+        assertDoesNotThrow(NativeStruct::getTypeHash);
     }
 }

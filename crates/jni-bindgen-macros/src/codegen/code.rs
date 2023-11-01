@@ -44,7 +44,7 @@ pub fn outer_class(
         constructors = disable_ctor(class_name);
     }
 
-    format!(
+    format_code(format!(
         r#"package {};
 
         {}
@@ -56,8 +56,8 @@ pub fn outer_class(
 
     {methods}
     
-    public static String getTypeName() {{
-        return {class_name}Native.getTypeName();
+    public static long getTypeHash() {{
+        return {class_name}Native.getTypeHash();
     }}
 
     {get_inner}
@@ -70,7 +70,7 @@ pub fn outer_class(
             .map(|i| format!("import {i};"))
             .collect::<Vec<String>>()
             .join("\n"),
-    )
+    ))
 }
 
 pub fn inner_class(
@@ -128,4 +128,58 @@ fn load_library(lib_name: &str) -> String {
             System.loadLibrary("{lib_name}");
         }}"#
     )
+}
+
+fn format_code(code: String) -> String {
+    let mut indent = 0;
+    let split = code
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>();
+
+    split
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            if line.starts_with('}') {
+                indent -= 1;
+            }
+
+            let next = split.get(i + 1).map(|s| s.to_string()).unwrap_or_default();
+            let res = format!(
+                "{pre_newline}{indent}{line}{newline}",
+                pre_newline = if line.starts_with("public class") {
+                    "\n"
+                } else {
+                    ""
+                },
+                indent = if line.starts_with('*') {
+                    " ".repeat(indent * 4 + 1)
+                } else {
+                    " ".repeat(indent * 4)
+                },
+                newline = if !line.ends_with('{')
+                    && !line.contains('*')
+                    && (!line.ends_with(';')
+                        || line.contains("native")
+                        || line.contains("private")
+                        || line.contains("package"))
+                    && !line.contains('@')
+                    && !next.contains('}')
+                {
+                    "\n"
+                } else {
+                    ""
+                }
+            );
+
+            if line.ends_with('{') {
+                indent += 1;
+            }
+
+            res
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

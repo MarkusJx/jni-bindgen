@@ -12,10 +12,11 @@ pub fn this(struct_name: &TokenStream, ret_val: &TokenStream) -> TokenStream {
                 } else {
                     Ok(unsafe { &*(ptr as *const #struct_name) })
                 }
-            }) {
+            })
+            .into_jni_result() {
                 Ok(this) => this,
                 Err(e) => {
-                    let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
+                    e.throw(&mut env);
                     return #ret_val;
                 }
             };
@@ -70,23 +71,21 @@ pub fn drop_struct(base_name: TokenStream, struct_name: String) -> TokenStream {
     )
 }
 
-pub fn get_type_name(base_name: TokenStream, struct_name: String) -> TokenStream {
-    let get_type_name: TokenStream = format!("{base_name}_getTypeName").parse().unwrap();
+pub fn get_type_hash(base_name: TokenStream, struct_name: String) -> TokenStream {
+    let get_type_hash: TokenStream = format!("{base_name}_getTypeHash").parse().unwrap();
     let struct_name: TokenStream = struct_name.parse().unwrap();
 
     quote!(
         #[no_mangle]
-        pub extern "system" fn #get_type_name<'local>(
+        pub extern "system" fn #get_type_hash<'local>(
             mut env: jni::JNIEnv<'local>,
             _class: jni::objects::JClass<'local>,
-        ) -> jni::sys::jstring {
-            match env.new_string(std::any::type_name::<#struct_name>()) {
-                Ok(name) => name.into_raw(),
-                Err(e) => {
-                    let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
-                    std::ptr::null_mut()
-                }
-            }
+        ) -> jni::sys::jlong {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            TypeId::of::<#struct_name>().hash(&mut hasher);
+
+            hasher.finish() as jni::sys::jlong
         }
     )
 }

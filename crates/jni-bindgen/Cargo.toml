@@ -7,3 +7,4 @@ edition = "2021"
 jni-bindgen-macros = { path = "../jni-bindgen-macros" }
 jni = "0.21.1"
 anyhow = "1.0.75"
+strum_macros = "0.25.3"
