@@ -4,11 +4,18 @@ use jni::objects::JObject;
 use jni::JNIEnv;
 use std::ops::{Deref, DerefMut};
 
+/// A wrapper for a Rust object that has been passed to Java
+/// and is now passed back to Rust. This wrapper is used to
+/// pass Java Lists containing Rust objects back to Rust.
 pub struct Wrapped<'local, T> {
     inner: &'local mut T,
 }
 
 impl<'local, T> Wrapped<'local, T> {
+    /// Create a new wrapper.
+    /// This will create a new wrapper for the given Rust object.
+    /// The wrapper will be valid for the lifetime of the given
+    /// JNI environment.
     pub fn new(inner: &'local mut T) -> Self {
         Self { inner }
     }

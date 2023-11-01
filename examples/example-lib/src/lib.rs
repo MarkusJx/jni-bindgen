@@ -133,6 +133,6 @@ impl RustStruct {
 
     #[jni]
     fn throw_other_error(err: String, msg: String) -> jni_bindgen::Result<()> {
-        jni_bindgen::bail!(ErrorClass::Any(err.replace('.', "/")), "{msg}")
+        jni_bindgen::bail_class!(ErrorClass::Any(err), "{}", msg)
     }
 }

@@ -130,6 +130,14 @@ impl<T: IntoJNI> IntoJNI for Option<Vec<T>> {
     }
 }
 
+/// Convert a Java object into a Rust [`HashMap`].
+///
+/// # Arguments
+/// * `env` - The JNI environment.
+/// * `obj` - The Java object.
+///
+/// # Returns
+/// The Rust [`HashMap`].
 pub fn into_hashmap<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>>(
     env: &mut JNIEnv<'local>,
     obj: JObject,
@@ -145,6 +153,14 @@ pub fn into_hashmap<'local, K: FromJNI<'local> + Eq + Hash, V: FromJNI<'local>>(
     Ok(map)
 }
 
+/// Convert a Rust [`HashMap`] into a Java object.
+///
+/// # Arguments
+/// * `env` - The JNI environment.
+/// * `map` - The Rust [`HashMap`].
+///
+/// # Returns
+/// The Java object.
 pub fn from_hashmap<K: IntoJNI + Eq + Hash, V: IntoJNI>(
     env: &mut JNIEnv,
     map: HashMap<K, V>,
@@ -165,6 +181,14 @@ pub fn from_hashmap<K: IntoJNI + Eq + Hash, V: IntoJNI>(
     Ok(j_map.into_raw())
 }
 
+/// Convert a Java object into a Rust [`Vec`].
+///
+/// # Arguments
+/// * `env` - The JNI environment.
+/// * `obj` - The Java object.
+///
+/// # Returns
+/// The Rust [`Vec`].
 pub fn into_vec<'local, T: FromJNI<'local>>(
     env: &mut JNIEnv<'local>,
     obj: JObject,
@@ -180,6 +204,14 @@ pub fn into_vec<'local, T: FromJNI<'local>>(
     Ok(vec)
 }
 
+/// Convert a Rust [`Vec`] into a Java object.
+///
+/// # Arguments
+/// * `env` - The JNI environment.
+/// * `vec` - The Rust [`Vec`].
+///
+/// # Returns
+/// The Java object.
 pub fn from_vec<T: IntoJNI>(env: &mut JNIEnv, vec: Vec<T>) -> crate::Result<jobject> {
     let j_vec = env.new_object("java/util/ArrayList", "()V", &[])?;
 
