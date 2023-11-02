@@ -14,6 +14,19 @@ public class TestRustStruct {
     }
 
     @Test
+    public void testGetValue() {
+        RustStruct rs = new RustStruct("test");
+        assertEquals("test", rs.getValue());
+    }
+
+    @Test
+    public void testSetValue() {
+        RustStruct rs = new RustStruct("test");
+        rs.setValue("test2");
+        assertEquals("test2", rs.getValue());
+    }
+
+    @Test
     public void testNullableString() {
         assertNull(RustStruct.getString(null));
         assertEquals("test", RustStruct.getString("test"));

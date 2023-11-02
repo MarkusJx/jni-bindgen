@@ -9,6 +9,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use quote::ToTokens;
 use std::collections::HashSet;
+use syn::spanned::Spanned;
 use syn::{Expr, FnArg, Lit, PatType};
 use syn::{ImplItemFn, Meta};
 
@@ -19,6 +20,7 @@ pub struct JavaMethod {
     pub args: IndexMap<String, JavaArg>,
     pub return_type: Option<JavaType>,
     pub static_method: bool,
+    pub mut_self: bool,
     _decl: Option<ImplItemFn>,
 }
 
@@ -32,6 +34,7 @@ impl JavaMethod {
                 .collect(),
             return_type: None,
             static_method: true,
+            mut_self: false,
             _decl: None,
         }
     }
@@ -43,6 +46,7 @@ impl JavaMethod {
             args: Default::default(),
             return_type: Some(JavaType::Long),
             static_method: true,
+            mut_self: false,
             _decl: None,
         }
     }
@@ -205,7 +209,7 @@ impl JavaMethod {
                 .return_type
                 .as_ref()
                 .map_or(quote!(()), |r| r.error_return_val());
-            Some(quotes::this(&parsed_struct_name, &ret_val))
+            Some(quotes::this(&parsed_struct_name, &ret_val, self.mut_self))
         };
 
         let j_args: TokenStream = self
@@ -349,18 +353,33 @@ impl FromDeclaration<&ImplItemFn, JavaMethod> for JavaMethod {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_, ty) => Some(JavaType::from_declaration(ty)?),
         };
-        let static_method = !decl
+        let self_arg = decl
             .sig
             .inputs
             .iter()
-            .any(|arg| matches!(arg, syn::FnArg::Receiver(_)));
+            .filter_map(|arg| match arg {
+                FnArg::Receiver(r) => {
+                    if r.reference.is_some() {
+                        Some(Ok(r.mutability.is_some()))
+                    } else {
+                        Some(Err(syn::Error::new(
+                            r.span(),
+                            "self argument must be a reference",
+                        )))
+                    }
+                }
+                _ => None,
+            })
+            .next()
+            .map_or(Ok(None), |r| r.map(Some))?;
 
         Ok(Self {
             name,
             original_name: decl.sig.ident.to_string(),
             args,
             return_type,
-            static_method,
+            static_method: self_arg.is_none(),
+            mut_self: self_arg.unwrap_or_default(),
             _decl: Some(decl.clone()),
         })
     }

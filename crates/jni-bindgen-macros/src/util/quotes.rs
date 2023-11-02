@@ -1,19 +1,27 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 
-pub fn this(struct_name: &TokenStream, ret_val: &TokenStream) -> TokenStream {
+pub fn this(struct_name: &TokenStream, ret_val: &TokenStream, is_mut: bool) -> TokenStream {
+    let (mut_token, mut_or_const) = if is_mut {
+        (quote!(mut), quote!(mut))
+    } else {
+        (quote!(), quote!(const))
+    };
+
     quote!(
         let this = match env.get_field(object, "ptr", "J")
             .and_then(|e| e.j())
-            .map_err(|e| e.to_string())
+            .into_jni_result()
             .and_then(|ptr| {
                 if ptr == 0 {
-                    Err("The pointer is null".to_string())
+                    Err(jni_bindgen::error_class!(
+                        jni_bindgen::errors::jni_error::ErrorClass::NullPointer,
+                        "The pointer is null"
+                    ))
                 } else {
-                    Ok(unsafe { &*(ptr as *const #struct_name) })
+                    Ok(unsafe { &#mut_token *(ptr as *#mut_or_const #struct_name) })
                 }
-            })
-            .into_jni_result() {
+            }) {
                 Ok(this) => this,
                 Err(e) => {
                     e.throw(&mut env);

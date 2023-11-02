@@ -82,6 +82,11 @@ impl RustStruct {
     }
 
     #[jni]
+    fn set_value(&mut self, value: String) {
+        self.value = value;
+    }
+
+    #[jni]
     fn get_string(opt: Option<String>) -> Option<String> {
         opt
     }
