@@ -1,5 +1,4 @@
 use crate::codegen::java_class::JavaClass;
-use crate::codegen::traits::AsDeclaration;
 use crate::util::attrs::BindgenAttrs;
 use proc_macro::TokenStream;
 use quote::quote;
@@ -16,9 +15,9 @@ pub fn expand(args: TokenStream, input: TokenStream) -> syn::Result<TokenStream>
         }
         Item::Impl(impl_) => {
             let java_class = JavaClass::from_declaration(&impl_, &args)?;
-            let java_class_decl = java_class.as_declaration(false);
 
             let res = java_class.as_jni_methods(&args)?;
+            let java_class_decl = java_class.as_declaration();
             if let Ok(debug) = std::env::var("DEBUG_JNI_BINDGEN") {
                 if debug == "true" {
                     println!("{java_class_decl}\n\n{res}");

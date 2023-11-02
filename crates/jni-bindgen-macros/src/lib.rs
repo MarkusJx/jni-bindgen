@@ -29,6 +29,7 @@ mod util;
 /// | [`HashMap`] | `java.util.Map` |
 /// | [`Wrapped`](jni_bindgen::objects::wrapped::Wrapped) | The wrapped type |
 /// | [`JObject`](jni::objects::JObject) | `java.lang.Object` |
+/// | [`&JNIEnv`](jni::JNIEnv) | N/A |
 /// | [`i32`] | `int` |
 /// | [`i64`] | `long` |
 /// | [`f32`] | `float` |

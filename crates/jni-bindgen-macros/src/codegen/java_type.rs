@@ -66,14 +66,14 @@ impl JavaArg {
                     "Result is not a valid argument for a JNI method",
                 ))
             }
-            JavaType::Option(..)
+            JavaType::Option { .. }
             | JavaType::Reference { .. }
             | JavaType::Object
             | JavaType::Vec { .. }
             | JavaType::HashMap { .. } => {
                 quote!(jni::objects::JObject<'local>)
             }
-            rest => rest.as_jni_return_type(),
+            rest => rest.as_jni_return_type()?,
         }))
     }
 
@@ -96,9 +96,9 @@ impl JavaArg {
                     env.get_string(&#arg_name)
                         .map(|s| s.into())
                         .into_jni_result()
-                })
+                })?
             },
-            JavaType::Env { mutable } => {
+            JavaType::Env { mutable, .. } => {
                 return Ok(JNIArgGetter::ArgName(if *mutable {
                     "&mut env".to_string()
                 } else {
@@ -126,9 +126,9 @@ impl JavaArg {
                     "Result is not a valid argument for a JNI method",
                 ))
             }
-            JavaType::Option(ty) => {
+            JavaType::Option { java_type, inner } => {
                 ret_ty.unwrap_or(&JavaType::Void).match_error(
-                match ty.as_ref() {
+                match java_type.as_ref() {
                     JavaType::Integer => {
                         quote!(jni_bindgen::conversion::option_convert::i32_from_jni(&mut env, #arg_name))
                     }
@@ -194,11 +194,11 @@ impl JavaArg {
                     JavaType::Wrapped(ty) => {
                         quote!(Option::<jni_bindgen::objects::wrapped::Wrapped<#ty>>::from_jni(&mut env, #arg_name))
                     }
-                    _ => return Err(syn::Error::new(self.get_span(), "Unsupported option type")),
-                })
+                    _ => return Err(syn::Error::new(inner.span(), "Unsupported option type")),
+                })?
             },
             JavaType::Reference { mutable, inner } => {
-                let err_ret = ret_ty.unwrap_or(&JavaType::Void).error_return_val();
+                let err_ret = ret_ty.unwrap_or(&JavaType::Void).error_return_val()?;
                 let inner = inner.into_token_stream();
 
                 let func = if *mutable {
@@ -231,12 +231,12 @@ impl JavaArg {
             JavaType::Vec{ty, ..} => {
                 ret_ty.unwrap_or(&JavaType::Void).match_error(quote!(
                     jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, #arg_name)
-                ))
+                ))?
             }
             JavaType::HashMap { key, value, .. } => {
                 ret_ty.unwrap_or(&JavaType::Void).match_error(quote!(
                     jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, #arg_name)
-                ))
+                ))?
             }
         }))
     }
@@ -274,9 +274,13 @@ pub enum JavaType {
     Byte,
     Env {
         mutable: bool,
+        inner: Type,
     },
     Result(Box<JavaType>),
-    Option(Box<JavaType>),
+    Option {
+        java_type: Box<JavaType>,
+        inner: Type,
+    },
     Reference {
         mutable: bool,
         inner: TypePath,
@@ -320,7 +324,7 @@ impl JavaType {
                 imports.extend(java_key.get_imports());
                 imports.extend(java_value.get_imports());
             }
-            JavaType::Option(java_type) => {
+            JavaType::Option { java_type, .. } => {
                 imports.extend(java_type.get_imports());
             }
             JavaType::Result(java_type) => {
@@ -347,7 +351,7 @@ impl JavaType {
             JavaType::Short => "short".to_string(),
             JavaType::Char => "char".to_string(),
             JavaType::Byte => "byte".to_string(),
-            JavaType::Option(ty) => match ty.as_ref() {
+            JavaType::Option { java_type, .. } => match java_type.as_ref() {
                 JavaType::String => "String".to_string(),
                 JavaType::Integer => "Integer".to_string(),
                 JavaType::Long => "Long".to_string(),
@@ -371,7 +375,7 @@ impl JavaType {
                 JavaType::Wrapped(ty) => ty.into_token_stream().to_string(),
                 _ => panic!(
                     "Unsupported option type: {}",
-                    ty.as_declaration().unwrap_or("Env".into())
+                    java_type.as_declaration().unwrap_or("Env".into())
                 ),
             },
             JavaType::Result(ty) => ty.as_declaration()?,
@@ -392,8 +396,8 @@ impl JavaType {
         })
     }
 
-    pub fn as_jni_return_type(&self) -> TokenStream {
-        match self {
+    pub fn as_jni_return_type(&self) -> syn::Result<TokenStream> {
+        Ok(match self {
             JavaType::String => quote!(jni::sys::jstring),
             JavaType::This => quote!(jni::sys::jlong),
             JavaType::Void => quote!(()),
@@ -405,21 +409,36 @@ impl JavaType {
             JavaType::Short => quote!(jni::sys::jshort),
             JavaType::Char => quote!(jni::sys::jchar),
             JavaType::Byte => quote!(jni::sys::jbyte),
-            JavaType::Option(..)
+            JavaType::Option { .. }
             | JavaType::Object
             | JavaType::Vec { .. }
             | JavaType::HashMap { .. } => quote!(jni::sys::jobject),
-            JavaType::Result(ty) => ty.as_jni_return_type(),
-            JavaType::Env { .. } => panic!("Env is not a valid Java type"),
-            JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
-            JavaType::Wrapped(..) => panic!("Wrapped types cannot be returned"),
-        }
+            JavaType::Result(ty) => ty.as_jni_return_type()?,
+            JavaType::Env { inner, .. } => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "Env is not a valid Java type",
+                ))
+            }
+            JavaType::Reference { inner, .. } => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "A reference to a type cannot be returned",
+                ))
+            }
+            JavaType::Wrapped(ty) => {
+                return Err(syn::Error::new(
+                    ty.span(),
+                    "Wrapped types cannot be returned",
+                ))
+            }
+        })
     }
 
-    pub fn error_return_val(&self) -> TokenStream {
-        match self {
+    pub fn error_return_val(&self) -> syn::Result<TokenStream> {
+        Ok(match self {
             JavaType::String
-            | JavaType::Option(..)
+            | JavaType::Option { .. }
             | JavaType::Object
             | JavaType::Vec { .. }
             | JavaType::HashMap { .. } => {
@@ -434,15 +453,30 @@ impl JavaType {
             JavaType::Void => quote!(),
             JavaType::Boolean => quote!(false),
             JavaType::Float | JavaType::Double => quote!(0.0),
-            JavaType::Result(ty) => ty.error_return_val(),
-            JavaType::Env { .. } => panic!("Env is not a valid Java type"),
-            JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
-            JavaType::Wrapped(..) => panic!("Wrapped types cannot be returned"),
-        }
+            JavaType::Result(ty) => ty.error_return_val()?,
+            JavaType::Env { inner, .. } => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "Env is not a valid Java type",
+                ))
+            }
+            JavaType::Reference { inner, .. } => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "A reference to a type cannot be returned",
+                ))
+            }
+            JavaType::Wrapped(inner) => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "Wrapped types cannot be returned",
+                ))
+            }
+        })
     }
 
-    pub fn as_jni_return_val(&self) -> TokenStream {
-        match self {
+    pub fn as_jni_return_val(&self) -> syn::Result<TokenStream> {
+        Ok(match self {
             JavaType::String => quote! {
                 match env.new_string(res).into_jni_result() {
                     Ok(str) => str.into_raw(),
@@ -477,8 +511,8 @@ impl JavaType {
             JavaType::Byte => quote!(res as jni::sys::jbyte),
             JavaType::Object => quote!(res.into_raw()),
             JavaType::Result(ty) => {
-                let ret = ty.as_jni_return_val();
-                let err = ty.error_return_val();
+                let ret = ty.as_jni_return_val()?;
+                let err = ty.error_return_val()?;
                 quote! {
                     match res.into_jni_result()
                         .map_err(|e| e.or_class(jni_bindgen::errors::jni_error::ErrorClass::NativeExecutionException))
@@ -495,8 +529,11 @@ impl JavaType {
                     }
                 }
             }
-            JavaType::Env { .. } => panic!("Env is not a valid Java type"),
-            JavaType::Option(ty) => self.match_error(match ty.as_ref() {
+            JavaType::Env { inner, .. } => return Err(syn::Error::new(
+                inner.span(),
+                "Env is not a valid Java type"
+            )),
+            JavaType::Option { java_type, inner } => self.match_error(match java_type.as_ref() {
                 JavaType::Integer => {
                     quote!(jni_bindgen::conversion::option_convert::i32_into_jni(
                         &mut env, res
@@ -560,17 +597,23 @@ impl JavaType {
                         }
                     }
                 }
-                _ => panic!("Unsupported option type"),
-            }),
-            JavaType::Reference { .. } => panic!("A reference to a type cannot be returned"),
-            JavaType::Wrapped(..) => panic!("Wrapped types cannot be returned"),
+                _ => return Err(syn::Error::new(inner.span(), "Unsupported option type")),
+            })?,
+            JavaType::Reference { inner, .. } => return Err(syn::Error::new(
+                inner.span(),
+                "A reference to a type cannot be returned"
+            )),
+            JavaType::Wrapped(inner) => return Err(syn::Error::new(
+                inner.span(),
+                "Wrapped types cannot be returned"
+            )),
             JavaType::Vec { ty, .. } => {
-                self.match_error(quote!(jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, res)))
+                self.match_error(quote!(jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, res)))?
             }
             JavaType::HashMap { key, value, .. } => {
-                self.match_error(quote!(jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, res)))
+                self.match_error(quote!(jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, res)))?
             }
-        }
+        })
     }
 
     pub fn is_void(&self, check_result: bool) -> bool {
@@ -581,10 +624,10 @@ impl JavaType {
         }
     }
 
-    fn match_error(&self, inner: TokenStream) -> TokenStream {
-        let error_return_val = self.error_return_val();
+    fn match_error(&self, inner: TokenStream) -> syn::Result<TokenStream> {
+        let error_return_val = self.error_return_val()?;
 
-        quote! {
+        Ok(quote! {
             match #inner.into_jni_result() {
                 Ok(res) => res,
                 Err(e) => {
@@ -596,7 +639,7 @@ impl JavaType {
                     return #error_return_val;
                 }
             }
-        }
+        })
     }
 }
 
@@ -627,6 +670,7 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
             "& jni :: JNIEnv" | "& JNIEnv" | "& mut jni :: JNIEnv" | "& mut JNIEnv" => {
                 JavaType::Env {
                     mutable: as_str.starts_with("& mut"),
+                    inner: decl.as_ref().clone(),
                 }
             }
             _ => {
@@ -650,11 +694,14 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                                                     )))
                                                 }
                                                 "Option" => {
-                                                    return Ok(JavaType::Option(Box::new(
-                                                        JavaType::from_declaration(&Box::new(
-                                                            ty.clone(),
-                                                        ))?,
-                                                    )))
+                                                    return Ok(JavaType::Option {
+                                                        java_type: Box::new(
+                                                            JavaType::from_declaration(&Box::new(
+                                                                ty.clone(),
+                                                            ))?,
+                                                        ),
+                                                        inner: ty.clone(),
+                                                    })
                                                 }
                                                 "Vec" => {
                                                     return Ok(JavaType::Vec {

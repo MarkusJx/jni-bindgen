@@ -1,6 +1,6 @@
 use crate::codegen::code::{inner_class, outer_class};
 use crate::codegen::java_method::JavaMethod;
-use crate::codegen::traits::{AsDeclaration, FromDeclaration};
+use crate::codegen::traits::FromDeclaration;
 use crate::util::attrs::BindgenAttrs;
 use crate::util::quotes;
 use crate::util::traits::JniMethod;
@@ -114,10 +114,8 @@ impl JavaClass {
 
         imports
     }
-}
 
-impl AsDeclaration for JavaClass {
-    fn as_declaration(&self, _: bool) -> String {
+    pub fn as_declaration(&self) -> String {
         let mut methods_copy = self.methods.clone();
         if !self.constructors.is_empty() {
             methods_copy.push(JavaMethod::drop_method());

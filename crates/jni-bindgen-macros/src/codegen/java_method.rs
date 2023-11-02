@@ -196,10 +196,14 @@ impl JavaMethod {
             .join("_")
             .parse()?;
 
-        let ret = self.return_type.as_ref().map(|r| {
-            let ret = r.as_jni_return_type();
-            quote!(-> #ret)
-        });
+        let ret = self
+            .return_type
+            .as_ref()
+            .map(|r| -> syn::Result<TokenStream> {
+                let ret = r.as_jni_return_type()?;
+                Ok(quote!(-> #ret))
+            })
+            .map_or(Ok(None), |v| v.map(Some))?;
 
         let parsed_struct_name = struct_name.parse()?;
         let this = if self.static_method {
@@ -208,7 +212,7 @@ impl JavaMethod {
             let ret_val = self
                 .return_type
                 .as_ref()
-                .map_or(quote!(()), |r| r.error_return_val());
+                .map_or(Ok(quote!(())), |r| r.error_return_val())?;
             Some(quotes::this(&parsed_struct_name, &ret_val, self.mut_self))
         };
 
@@ -292,7 +296,7 @@ impl JavaMethod {
         let return_res = self
             .return_type
             .as_ref()
-            .map_or(quote!(), |r| r.as_jni_return_val());
+            .map_or(Ok(quote!()), |r| r.as_jni_return_val())?;
 
         Ok(quote!(
             #[no_mangle]

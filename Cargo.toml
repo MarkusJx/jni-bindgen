@@ -3,5 +3,6 @@ resolver = "2"
 members = [
     "crates/jni-bindgen-macros",
     "crates/jni-bindgen",
+    "crates/cli",
     "examples/example-lib"
 ]
