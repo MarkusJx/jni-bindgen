@@ -14,28 +14,33 @@ pub struct BindgenAttrs {
 }
 
 impl BindgenAttrs {
+    fn get_attr<F: FnMut(&(Cell<bool>, BindgenAttr)) -> Option<R>, R>(&self, f: F) -> Option<R> {
+        self.attrs.iter().filter_map(f).next()
+    }
+
+    pub fn get_class_name(&self) -> Option<String> {
+        self.get_attr(|attr| match &attr.1 {
+            BindgenAttr::ClassName(_, name, _) => Some(name.clone()),
+            _ => None,
+        })
+    }
+
     pub fn get_namespace(&self) -> syn::Result<String> {
-        self.attrs
-            .iter()
-            .filter_map(|e| match &e.1 {
-                BindgenAttr::Namespace(_, name, _) => Some(name.clone()),
-                _ => None,
-            })
-            .next()
-            .ok_or(syn::Error::new(
-                self.span,
-                "Missing namespace = \"...\" attribute",
-            ))
+        self.get_attr(|e| match &e.1 {
+            BindgenAttr::Namespace(_, name, _) => Some(name.clone()),
+            _ => None,
+        })
+        .ok_or(syn::Error::new(
+            self.span,
+            "Missing namespace = \"...\" attribute",
+        ))
     }
 
     pub fn get_rename(&self) -> Option<String> {
-        self.attrs
-            .iter()
-            .filter_map(|arg| match &arg.1 {
-                BindgenAttr::Rename(_, name, _) => Some(name.clone()),
-                _ => None,
-            })
-            .next()
+        self.get_attr(|arg| match &arg.1 {
+            BindgenAttr::Rename(_, name, _) => Some(name.clone()),
+            _ => None,
+        })
     }
 
     pub fn is_constructor(&self) -> bool {
@@ -45,13 +50,10 @@ impl BindgenAttrs {
     }
 
     pub fn load_lib(&self) -> Option<String> {
-        self.attrs
-            .iter()
-            .filter_map(|arg| match &arg.1 {
-                BindgenAttr::LoadLib(_, name, _) => Some(name.clone()),
-                _ => None,
-            })
-            .next()
+        self.get_attr(|arg| match &arg.1 {
+            BindgenAttr::LoadLib(_, name, _) => Some(name.clone()),
+            _ => None,
+        })
     }
 }
 
@@ -100,6 +102,7 @@ macro_rules! attrgen {
             (rename, Rename(Span, String, Span)),
             (constructor, Constructor(Span)),
             (load_lib, LoadLib(Span, String, Span)),
+            (class_name, ClassName(Span, String, Span)),
         }
     };
 }

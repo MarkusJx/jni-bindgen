@@ -1,10 +1,18 @@
 use anyhow::bail;
-use jni::objects::JObject;
+use jni::objects::{JObject, JValue, JValueGen, JValueOwned};
+use jni::JNIEnv;
 use jni_bindgen::errors::jni_error::ErrorClass;
 use jni_bindgen::jni;
 use jni_bindgen::objects::traits::{FromJNI, ObjectFromJNI};
 use std::any::TypeId;
 use std::collections::HashMap;
+
+#[jni(namespace = "com.github.markusjx.generated")]
+trait TestTrait {
+    fn test(&self, env: &mut JNIEnv, val: String) -> jni_bindgen::Result<String>;
+
+    fn other(&self, env: &mut JNIEnv) -> jni_bindgen::Result<String>;
+}
 
 struct RustStruct {
     value: String,

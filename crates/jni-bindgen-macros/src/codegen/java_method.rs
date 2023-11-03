@@ -9,8 +9,9 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use quote::ToTokens;
 use std::collections::HashSet;
+use std::ptr::addr_of;
 use syn::spanned::Spanned;
-use syn::{Expr, FnArg, Lit, PatType};
+use syn::{Attribute, Expr, FnArg, Lit, PatType, Signature, TraitItemFn};
 use syn::{ImplItemFn, Meta};
 
 #[derive(Clone)]
@@ -21,7 +22,22 @@ pub struct JavaMethod {
     pub return_type: Option<JavaType>,
     pub static_method: bool,
     pub mut_self: bool,
-    _decl: Option<ImplItemFn>,
+    _decl: Option<ImplOrTraitFn>,
+}
+
+#[derive(Clone)]
+enum ImplOrTraitFn {
+    Impl(ImplItemFn),
+    Trait(TraitItemFn),
+}
+
+impl ImplOrTraitFn {
+    fn attrs(&self) -> &Vec<Attribute> {
+        match self {
+            Self::Impl(i) => &i.attrs,
+            Self::Trait(t) => &t.attrs,
+        }
+    }
 }
 
 impl JavaMethod {
@@ -315,11 +331,132 @@ impl JavaMethod {
         ))
     }
 
+    pub fn as_trait_method(&self) -> syn::Result<TokenStream> {
+        let name: TokenStream = self.name.parse()?;
+        let ImplOrTraitFn::Trait(decl) = self._decl.as_ref().unwrap() else {
+            panic!("Expected trait method")
+        };
+
+        if self.static_method {
+            return Err(syn::Error::new(
+                decl.span(),
+                "Trait methods cannot be static",
+            ));
+        }
+
+        if self.return_type.is_none()
+            || !matches!(self.return_type.as_ref().unwrap(), JavaType::Result { .. })
+        {
+            return Err(syn::Error::new(
+                decl.span(),
+                "Trait methods must return a Result",
+            ));
+        }
+
+        match self.args.values().find_map(|a| match &a.java_type {
+            JavaType::Env { mutable, inner } => Some((mutable, inner)),
+            _ => None,
+        }) {
+            Some((true, _)) => {}
+            Some((false, env)) => {
+                return Err(syn::Error::new(
+                    env.span(),
+                    "JNIEnv must be mutable in trait methods",
+                ))
+            }
+            None => {
+                return Err(syn::Error::new(
+                    decl.span(),
+                    "Trait methods must take a JNIEnv",
+                ))
+            }
+        }
+
+        let args = self
+            .args
+            .values()
+            .filter(|arg| !arg.is_self())
+            .enumerate()
+            .map(|(i, arg)| {
+                let arg_name: TokenStream = if arg.is_env() {
+                    "env".to_string().parse()?
+                } else {
+                    format!("arg_{i}").parse()?
+                };
+
+                let arg = arg.java_type.as_interface_arg()?;
+                Ok(quote!(#arg_name: #arg, ))
+            })
+            .collect::<syn::Result<Vec<_>>>()?;
+
+        let vals = self
+            .args
+            .values()
+            .filter(|arg| !arg.is_self())
+            .enumerate()
+            .filter(|(_, arg)| !arg.is_env())
+            .map(|(i, arg)| {
+                let in_arg: TokenStream = format!("arg_{i}").parse()?;
+                let out_arg: TokenStream = format!("j_arg_{i}").parse()?;
+                arg.as_interface_val(in_arg, out_arg)
+            })
+            .collect::<syn::Result<Vec<_>>>()?;
+
+        let j_args = self
+            .args
+            .values()
+            .filter(|arg| !arg.is_self())
+            .enumerate()
+            .filter(|(_, arg)| !arg.is_env())
+            .map(|(i, _)| -> syn::Result<TokenStream> {
+                format!("j_arg_{i}")
+                    .parse::<TokenStream>()
+                    .map_err(Into::into)
+            })
+            .collect::<syn::Result<Vec<_>>>()?;
+
+        let args_decl = self
+            .args
+            .values()
+            .filter(|arg| !arg.is_self() && !arg.is_env())
+            .map(|arg| arg.java_type.as_jni_declaration())
+            .collect::<Vec<_>>()
+            .join("");
+        let ret_decl = self
+            .return_type
+            .as_ref()
+            .map(|r| r.as_jni_declaration())
+            .unwrap_or("V");
+
+        let decl_str = format!("({}){}", args_decl, ret_decl);
+        let java_name = self.name.to_case(Case::Camel);
+
+        let ret = decl.sig.output.clone();
+        let ret_val = self
+            .return_type
+            .as_ref()
+            .map(|r| r.as_rust_return_val())
+            .unwrap_or(quote!(Ok(())));
+        Ok(quote! {
+            fn #name(&self, #(#args)*) #ret {
+                #(#vals)*
+
+                let res = env.call_method(
+                    &self.obj,
+                    #java_name,
+                    #decl_str,
+                    &[#(#j_args),*],
+                )?;
+                #ret_val
+            }
+        })
+    }
+
     fn get_comment(&self) -> Option<String> {
         self._decl
             .as_ref()
             .map(|decl| {
-                decl.attrs
+                decl.attrs()
                     .iter()
                     .filter(|a| a.path().clone().into_token_stream().to_string() == "doc")
                     .filter_map(|a| {
@@ -339,26 +476,19 @@ impl JavaMethod {
             .filter(|s| !s.is_empty())
             .map(|s| format!("/**\n{}\n */\n", s))
     }
-}
 
-impl FromDeclaration<&ImplItemFn, JavaMethod> for JavaMethod {
-    fn from_declaration(decl: &ImplItemFn) -> syn::Result<Self> {
-        let name = decl
-            .get_rename()
-            .unwrap_or_else(|| decl.sig.ident.to_string());
-        let args = decl
-            .sig
+    fn from_sig(sig: &Signature, name: String, decl: ImplOrTraitFn) -> syn::Result<Self> {
+        let args = sig
             .inputs
             .iter()
             .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
             .map(|arg| Ok((Self::get_name(arg), JavaArg::from_declaration(arg)?)))
             .collect::<syn::Result<IndexMap<_, _>>>()?;
-        let return_type = match &decl.sig.output {
+        let return_type = match &sig.output {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_, ty) => Some(JavaType::from_declaration(ty)?),
         };
-        let self_arg = decl
-            .sig
+        let self_arg = sig
             .inputs
             .iter()
             .filter_map(|arg| match arg {
@@ -379,12 +509,32 @@ impl FromDeclaration<&ImplItemFn, JavaMethod> for JavaMethod {
 
         Ok(Self {
             name,
-            original_name: decl.sig.ident.to_string(),
+            original_name: sig.ident.to_string(),
             args,
             return_type,
             static_method: self_arg.is_none(),
             mut_self: self_arg.unwrap_or_default(),
-            _decl: Some(decl.clone()),
+            _decl: Some(decl),
         })
+    }
+}
+
+impl FromDeclaration<&ImplItemFn, JavaMethod> for JavaMethod {
+    fn from_declaration(decl: &ImplItemFn) -> syn::Result<Self> {
+        let name = decl
+            .get_rename()
+            .unwrap_or_else(|| decl.sig.ident.to_string());
+
+        Self::from_sig(&decl.sig, name, ImplOrTraitFn::Impl(decl.clone()))
+    }
+}
+
+impl FromDeclaration<&TraitItemFn, JavaMethod> for JavaMethod {
+    fn from_declaration(decl: &TraitItemFn) -> syn::Result<Self> {
+        let name = decl
+            .get_rename()
+            .unwrap_or_else(|| decl.sig.ident.to_string());
+
+        Self::from_sig(&decl.sig, name, ImplOrTraitFn::Trait(decl.clone()))
     }
 }

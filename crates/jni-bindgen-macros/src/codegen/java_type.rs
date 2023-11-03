@@ -37,6 +37,10 @@ impl JavaArg {
         }
     }
 
+    pub fn is_env(&self) -> bool {
+        matches!(self.java_type, JavaType::Env { .. })
+    }
+
     pub fn as_jni_fn_arg(&self) -> syn::Result<Option<TokenStream>> {
         if self.is_self() {
             return Err(syn::Error::new(
@@ -60,7 +64,7 @@ impl JavaArg {
                     "Void is not a valid argument for a JNI method",
                 ))
             }
-            JavaType::Result(..) => {
+            JavaType::Result { .. } => {
                 return Err(syn::Error::new(
                     self.get_span(),
                     "Result is not a valid argument for a JNI method",
@@ -120,7 +124,7 @@ impl JavaArg {
                 ))
             }
             JavaType::Void => quote!(),
-            JavaType::Result(_) => {
+            JavaType::Result { .. }=> {
                 return Err(syn::Error::new(
                     self.get_span(),
                     "Result is not a valid argument for a JNI method",
@@ -223,6 +227,74 @@ impl JavaArg {
         }))
     }
 
+    pub fn as_interface_val(
+        &self,
+        arg_name: TokenStream,
+        out_arg: TokenStream,
+    ) -> syn::Result<TokenStream> {
+        Ok(match &self.java_type {
+            JavaType::String => {
+                let inner_arg_name: TokenStream = format!("{}_inner", arg_name).parse()?;
+                quote! {
+                    let #inner_arg_name = env.new_string(#arg_name)?;
+                    let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                }
+            }
+            JavaType::This => {
+                return Err(syn::Error::new(
+                    self.get_span(),
+                    "Self is not a valid argument for a JNI method",
+                ))
+            }
+            JavaType::Void => {
+                return Err(syn::Error::new(
+                    self.get_span(),
+                    "Void is not a valid argument for a JNI method",
+                ))
+            }
+            JavaType::Integer
+            | JavaType::Long
+            | JavaType::Boolean
+            | JavaType::Float
+            | JavaType::Double
+            | JavaType::Short
+            | JavaType::Char
+            | JavaType::Byte => {
+                quote!(let #out_arg = #arg_name.into();)
+            }
+            JavaType::Env { .. } => {
+                return Err(syn::Error::new(
+                    self.get_span(),
+                    "Env is not a valid argument for a JNI method",
+                ))
+            }
+            JavaType::Result { .. } => {
+                return Err(syn::Error::new(
+                    self.get_span(),
+                    "Result is not a valid argument for a JNI method",
+                ))
+            }
+            JavaType::Option { .. } => {
+                unimplemented!()
+            }
+            JavaType::Reference { .. } => {
+                return Err(syn::Error::new(
+                    self.get_span(),
+                    "A reference to a type cannot be passed",
+                ))
+            }
+            JavaType::Object => {
+                quote!(let #out_arg = (&#arg_name).into();)
+            }
+            JavaType::Vec { .. } => {
+                unimplemented!()
+            }
+            JavaType::HashMap { .. } => {
+                unimplemented!()
+            }
+        })
+    }
+
     fn get_span(&self) -> Span {
         if let Some(decl) = &self.decl {
             decl.span()
@@ -258,7 +330,10 @@ pub enum JavaType {
         mutable: bool,
         inner: Type,
     },
-    Result(Box<JavaType>),
+    Result {
+        java_type: Box<JavaType>,
+        result_type: TypePath,
+    },
     Option {
         java_type: Box<JavaType>,
         inner: Type,
@@ -281,7 +356,7 @@ pub enum JavaType {
 
 impl JavaType {
     pub fn throws(&self) -> Option<String> {
-        if let JavaType::Result(_) = self {
+        if let JavaType::Result { .. } = self {
             Some(" throws NativeExecutionException".to_string())
         } else {
             None
@@ -307,7 +382,7 @@ impl JavaType {
             JavaType::Option { java_type, .. } => {
                 imports.extend(java_type.get_imports());
             }
-            JavaType::Result(java_type) => {
+            JavaType::Result { java_type, .. } => {
                 imports
                     .insert("com.github.markusjx.jnibindgen.NativeExecutionException".to_string());
                 imports.extend(java_type.get_imports());
@@ -357,7 +432,7 @@ impl JavaType {
                     java_type.as_declaration().unwrap_or("Env".into())
                 ),
             },
-            JavaType::Result(ty) => ty.as_declaration()?,
+            JavaType::Result { java_type, .. } => java_type.as_declaration()?,
             JavaType::Env { .. } => return None,
             JavaType::Reference { inner, .. } => inner.into_token_stream().to_string(),
             JavaType::Object => "Object".to_string(),
@@ -391,7 +466,7 @@ impl JavaType {
             | JavaType::Object
             | JavaType::Vec { .. }
             | JavaType::HashMap { .. } => quote!(jni::sys::jobject),
-            JavaType::Result(ty) => ty.as_jni_return_type()?,
+            JavaType::Result { java_type, .. } => java_type.as_jni_return_type()?,
             JavaType::Env { inner, .. } => {
                 return Err(syn::Error::new(
                     inner.span(),
@@ -425,7 +500,7 @@ impl JavaType {
             JavaType::Void => quote!(),
             JavaType::Boolean => quote!(false),
             JavaType::Float | JavaType::Double => quote!(0.0),
-            JavaType::Result(ty) => ty.error_return_val()?,
+            JavaType::Result { java_type, .. } => java_type.error_return_val()?,
             JavaType::Env { inner, .. } => {
                 return Err(syn::Error::new(
                     inner.span(),
@@ -441,6 +516,120 @@ impl JavaType {
         })
     }
 
+    pub fn as_interface_arg(&self) -> syn::Result<TokenStream> {
+        Ok(match self {
+            JavaType::String => quote!(String),
+            JavaType::This => quote!(&self),
+            JavaType::Void => quote!(()),
+            JavaType::Integer => quote!(i32),
+            JavaType::Long => quote!(i64),
+            JavaType::Boolean => quote!(bool),
+            JavaType::Float => quote!(f32),
+            JavaType::Double => quote!(f64),
+            JavaType::Short => quote!(i16),
+            JavaType::Char => quote!(u16),
+            JavaType::Byte => quote!(i8),
+            JavaType::Env { .. } => quote!(&mut jni::JNIEnv),
+            JavaType::Result { result_type, .. } => quote!(#result_type),
+            JavaType::Option { java_type, .. } => {
+                let inner_ty = java_type.as_interface_arg()?;
+                quote!(Option<#inner_ty>)
+            }
+            JavaType::Reference { inner } => quote!(&#inner),
+            JavaType::Object => quote!(jni::objects::JObject),
+            JavaType::Vec { java_type, .. } => {
+                let inner_ty = java_type.as_interface_arg()?;
+                quote!(Vec<#inner_ty>)
+            }
+            JavaType::HashMap {
+                java_key,
+                java_value,
+                ..
+            } => {
+                let key_ty = java_key.as_interface_arg()?;
+                let value_ty = java_value.as_interface_arg()?;
+                quote!(HashMap<#key_ty, #value_ty>)
+            }
+        })
+    }
+
+    pub fn as_jni_declaration(&self) -> &'static str {
+        match self {
+            JavaType::String => "Ljava/lang/String;",
+            JavaType::This => panic!("Self is not a valid argument for a JNI method"),
+            JavaType::Void => "V",
+            JavaType::Integer => "I",
+            JavaType::Long => "J",
+            JavaType::Boolean => "Z",
+            JavaType::Float => "F",
+            JavaType::Double => "D",
+            JavaType::Short => "S",
+            JavaType::Char => "C",
+            JavaType::Byte => "B",
+            JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
+            JavaType::Result { java_type, .. } => java_type.as_jni_declaration(),
+            JavaType::Option { java_type, .. } => match java_type.as_ref() {
+                JavaType::String => "Ljava/lang/String;",
+                JavaType::This => panic!("Self is not a valid argument for a JNI method"),
+                JavaType::Void => "V",
+                JavaType::Integer => "Ljava/lang/Integer;",
+                JavaType::Long => "Ljava/lang/Long;",
+                JavaType::Boolean => "Ljava/lang/Boolean;",
+                JavaType::Float => "Ljava/lang/Float;",
+                JavaType::Double => "Ljava/lang/Double;",
+                JavaType::Short => "Ljava/lang/Short;",
+                JavaType::Char => "Ljava/lang/Character;",
+                JavaType::Byte => "Ljava/lang/Byte;",
+                JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
+                JavaType::Result { java_type, .. } => java_type.as_jni_declaration(),
+                JavaType::Option { .. } => {
+                    panic!("Option is not a valid argument for a JNI method")
+                }
+                JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
+                JavaType::Object => "Ljava/lang/Object;",
+                JavaType::Vec { .. } => "Ljava/util/List;",
+                JavaType::HashMap { .. } => "Ljava/util/Map;",
+            },
+            JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
+            JavaType::Object => "Ljava/lang/Object;",
+            JavaType::Vec { .. } => "Ljava/util/List;",
+            JavaType::HashMap { .. } => "Ljava/util/Map;",
+        }
+    }
+
+    pub fn as_rust_return_val(&self) -> TokenStream {
+        match self {
+            JavaType::String => quote! {
+                env.get_string(&jni::objects::JString::from(res.l()?))
+                    .map(Into::into)
+                    .map_err(Into::into)
+            },
+            JavaType::This => panic!("Self is not a valid argument for a JNI method"),
+            JavaType::Void => quote!(Ok(())),
+            JavaType::Integer => quote!(res.i().map_err(Into::into)),
+            JavaType::Long => quote!(res.j().map_err(Into::into)),
+            JavaType::Boolean => quote!(res.z().map_err(Into::into)),
+            JavaType::Float => quote!(res.f().map_err(Into::into)),
+            JavaType::Double => quote!(res.d().map_err(Into::into)),
+            JavaType::Short => quote!(res.s().map_err(Into::into)),
+            JavaType::Char => quote!(res.c().map_err(Into::into)),
+            JavaType::Byte => quote!(res.b().map_err(Into::into)),
+            JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
+            JavaType::Result { java_type, .. } => java_type.as_rust_return_val(),
+            JavaType::Option { .. } => {
+                unimplemented!()
+            }
+            JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
+            JavaType::Object => quote!(res.l().map_err(Into::into)),
+            JavaType::Vec { .. } => {
+                unimplemented!()
+            }
+            JavaType::HashMap { .. } => {
+                unimplemented!()
+            }
+        }
+    }
+
     pub fn as_jni_return_val(&self) -> syn::Result<TokenStream> {
         Ok(match self {
             JavaType::String => quote! {
@@ -451,7 +640,6 @@ impl JavaType {
                             return std::ptr::null_mut();
                         }
 
-                        println!("{:?}", e);
                         e.throw(&mut env);
                         std::ptr::null_mut()
                     }
@@ -476,9 +664,9 @@ impl JavaType {
             JavaType::Char => quote!(res as jni::sys::jchar),
             JavaType::Byte => quote!(res as jni::sys::jbyte),
             JavaType::Object => quote!(res.into_raw()),
-            JavaType::Result(ty) => {
-                let ret = ty.as_jni_return_val()?;
-                let err = ty.error_return_val()?;
+            JavaType::Result {java_type, ..} => {
+                let ret = java_type.as_jni_return_val()?;
+                let err = java_type.error_return_val()?;
                 quote! {
                     match res.into_jni_result()
                         .map_err(|e| e.or_class(jni_bindgen::errors::jni_error::ErrorClass::NativeExecutionException))
@@ -581,7 +769,7 @@ impl JavaType {
     pub fn is_void(&self, check_result: bool) -> bool {
         match self {
             JavaType::Void => true,
-            JavaType::Result(r) => check_result && r.is_void(check_result),
+            JavaType::Result { java_type, .. } => check_result && java_type.is_void(check_result),
             _ => false,
         }
     }
@@ -649,11 +837,14 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                                         {
                                             match last.ident.to_string().as_str() {
                                                 "Result" => {
-                                                    return Ok(JavaType::Result(Box::new(
-                                                        JavaType::from_declaration(&Box::new(
-                                                            ty.clone(),
-                                                        ))?,
-                                                    )))
+                                                    return Ok(JavaType::Result {
+                                                        result_type: path.clone(),
+                                                        java_type: Box::new(
+                                                            JavaType::from_declaration(&Box::new(
+                                                                ty.clone(),
+                                                            ))?,
+                                                        ),
+                                                    })
                                                 }
                                                 "Option" => {
                                                     return Ok(JavaType::Option {
