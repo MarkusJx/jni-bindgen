@@ -97,3 +97,19 @@ pub fn get_type_hash(base_name: TokenStream, struct_name: String) -> TokenStream
         }
     )
 }
+
+pub fn from_jni(struct_name: String) -> TokenStream {
+    let struct_name: TokenStream = struct_name.parse().unwrap();
+    quote! {
+        impl<'local> FromJNI<'local> for &'local #struct_name {
+            fn from_jni(
+                env: &mut jni::JNIEnv<'local>,
+                obj: jni::objects::JObject
+            ) -> jni_bindgen::Result<Self> {
+                jni_bindgen::conversion::class_convert::get_struct(env, obj)
+            }
+        }
+
+        impl<'local> ObjectFromJNI<'local> for &'local #struct_name {}
+    }
+}

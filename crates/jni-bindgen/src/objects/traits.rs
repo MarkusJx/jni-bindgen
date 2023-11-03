@@ -17,6 +17,9 @@ pub trait FromJNI<'local>: Sized {
     fn from_jni(env: &mut JNIEnv<'local>, obj: JObject) -> crate::Result<Self>;
 }
 
+/// Convert a previously into Java converted object back into a Rust object.
+pub trait ObjectFromJNI<'local>: FromJNI<'local> + Send + Sync {}
+
 /// Convert a Rust object into a Java object.
 pub trait IntoJNI {
     /// Convert a Rust object into a Java object.

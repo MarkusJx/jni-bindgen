@@ -10,9 +10,6 @@ pub fn expand(args: TokenStream, input: TokenStream) -> syn::Result<TokenStream>
     let args: BindgenAttrs = syn::parse2(args.into())?;
 
     let code = match item.clone() {
-        Item::Struct(str) => {
-            return Err(syn::Error::new(str.span(), "structs are not supported"));
-        }
         Item::Impl(impl_) => {
             let java_class = JavaClass::from_declaration(&impl_, &args)?;
 
@@ -35,7 +32,13 @@ pub fn expand(args: TokenStream, input: TokenStream) -> syn::Result<TokenStream>
 
             Some(res)
         }
-        _ => None,
+        Item::Fn(_) => None,
+        _ => {
+            return Err(syn::Error::new(
+                item.span(),
+                "Only impl blocks and functions are supported",
+            ))
+        }
     };
 
     Ok(quote!(

@@ -94,12 +94,14 @@ impl JavaClass {
         };
 
         let get_type_hash = quotes::get_type_hash(base_name.parse()?, self.name.clone());
+        let from_jni = quotes::from_jni(self.name.clone());
 
         Ok(quote!(
             #methods
             #constructors
             #drop
             #get_type_hash
+            #from_jni
         ))
     }
 

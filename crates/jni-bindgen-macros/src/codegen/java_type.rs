@@ -156,20 +156,14 @@ impl JavaArg {
                     JavaType::String => {
                         quote!(jni_bindgen::conversion::option_convert::string_from_jni(&mut env, #arg_name))
                     },
-                    JavaType::Reference {mutable, inner} => {
+                    JavaType::Reference {inner} => {
                         let inner = inner.into_token_stream();
-
-                        let func = if *mutable {
-                            quote!(get_struct_mut)
-                        } else {
-                            quote!(get_struct)
-                        };
 
                         quote! {
                             if #arg_name.is_null() {
                                 Ok(None)
                             } else {
-                                jni_bindgen::conversion::class_convert::#func::<#inner>(&mut env, #arg_name).map(Some)
+                                <&#inner>::from_jni(&mut env, #arg_name).map(Some)
                             }
                         }
                     }
@@ -191,28 +185,19 @@ impl JavaArg {
                             }
                         }
                     }
-                    JavaType::Wrapped(ty) => {
-                        quote!(Option::<jni_bindgen::objects::wrapped::Wrapped<#ty>>::from_jni(&mut env, #arg_name))
-                    }
                     _ => return Err(syn::Error::new(inner.span(), "Unsupported option type")),
                 })?
             },
-            JavaType::Reference { mutable, inner } => {
+            JavaType::Reference { inner } => {
                 let err_ret = ret_ty.unwrap_or(&JavaType::Void).error_return_val()?;
                 let inner = inner.into_token_stream();
-
-                let func = if *mutable {
-                    quote!(get_struct_mut)
-                } else {
-                    quote!(get_struct)
-                };
 
                 quote! {
                     if #arg_name.is_null() {
                         let _ = env.throw_new("java/lang/NullPointerException", "The pointer is null");
                         return #err_ret;
                     } else {
-                        match jni_bindgen::conversion::class_convert::#func::<#inner>(&mut env, #arg_name) {
+                        match <&#inner>::from_jni(&mut env, #arg_name) {
                             Ok(ptr) => ptr,
                             Err(e) => {
                                 let _ = env.throw_new("java/lang/RuntimeException", e.to_string());
@@ -222,9 +207,6 @@ impl JavaArg {
                     }
                 }
             },
-            JavaType::Wrapped(ty) => {
-                quote!(jni_bindgen::objects::wrapped::Wrapped::<#ty>::from_jni(&mut env, #arg_name))
-            }
             JavaType::Object => {
                 quote!(#arg_name)
             }
@@ -282,10 +264,8 @@ pub enum JavaType {
         inner: Type,
     },
     Reference {
-        mutable: bool,
         inner: TypePath,
     },
-    Wrapped(Type),
     Object,
     Vec {
         ty: Type,
@@ -372,7 +352,6 @@ impl JavaType {
                     java_key.as_declaration()?,
                     java_value.as_declaration()?
                 ),
-                JavaType::Wrapped(ty) => ty.into_token_stream().to_string(),
                 _ => panic!(
                     "Unsupported option type: {}",
                     java_type.as_declaration().unwrap_or("Env".into())
@@ -381,7 +360,6 @@ impl JavaType {
             JavaType::Result(ty) => ty.as_declaration()?,
             JavaType::Env { .. } => return None,
             JavaType::Reference { inner, .. } => inner.into_token_stream().to_string(),
-            JavaType::Wrapped(ty) => ty.into_token_stream().to_string(),
             JavaType::Object => "Object".to_string(),
             JavaType::Vec { java_type, .. } => format!("List<{}>", java_type.as_declaration()?),
             JavaType::HashMap {
@@ -426,12 +404,6 @@ impl JavaType {
                     "A reference to a type cannot be returned",
                 ))
             }
-            JavaType::Wrapped(ty) => {
-                return Err(syn::Error::new(
-                    ty.span(),
-                    "Wrapped types cannot be returned",
-                ))
-            }
         })
     }
 
@@ -464,12 +436,6 @@ impl JavaType {
                 return Err(syn::Error::new(
                     inner.span(),
                     "A reference to a type cannot be returned",
-                ))
-            }
-            JavaType::Wrapped(inner) => {
-                return Err(syn::Error::new(
-                    inner.span(),
-                    "Wrapped types cannot be returned",
                 ))
             }
         })
@@ -603,10 +569,6 @@ impl JavaType {
                 inner.span(),
                 "A reference to a type cannot be returned"
             )),
-            JavaType::Wrapped(inner) => return Err(syn::Error::new(
-                inner.span(),
-                "Wrapped types cannot be returned"
-            )),
             JavaType::Vec { ty, .. } => {
                 self.match_error(quote!(jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, res)))?
             }
@@ -678,7 +640,7 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                     Type::Path(path) => {
                         if let Some(last) = path.path.segments.last() {
                             match last.ident.to_string().as_str() {
-                                "Result" | "Option" | "Vec" | "Wrapped" => {
+                                "Result" | "Option" | "Vec" => {
                                     if let syn::PathArguments::AngleBracketed(args) =
                                         &last.arguments
                                     {
@@ -712,9 +674,6 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                                                             ))?,
                                                         ),
                                                     })
-                                                }
-                                                "Wrapped" => {
-                                                    return Ok(JavaType::Wrapped(ty.clone()))
                                                 }
                                                 _ => unreachable!(),
                                             }
@@ -754,10 +713,16 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                     }
                     Type::Reference(reference) => {
                         if let Type::Path(path) = reference.elem.as_ref() {
-                            return Ok(JavaType::Reference {
-                                mutable: reference.mutability.is_some(),
-                                inner: path.clone(),
-                            });
+                            return if reference.mutability.is_some() {
+                                Err(syn::Error::new(
+                                    decl.span(),
+                                    "Mutable references are not supported",
+                                ))
+                            } else {
+                                Ok(JavaType::Reference {
+                                    inner: path.clone(),
+                                })
+                            };
                         }
                     }
                     _ => {}

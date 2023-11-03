@@ -26,30 +26,6 @@ public class TestNativeStruct {
     }
 
     @Test
-    public void testSetRustStructValue() {
-        RustStruct rs = new RustStruct("test");
-        NativeStruct.setRustStructValue(rs, "test2");
-        assertEquals("test2", rs.getValue());
-    }
-
-    @Test
-    public void testSetRustStructValueNull() {
-        var msg =
-                assertThrows(
-                                NullPointerException.class,
-                                () -> NativeStruct.setRustStructValue(null, "test"))
-                        .getMessage();
-        assertEquals("The pointer is null", msg);
-
-        msg =
-                assertThrows(
-                                NullPointerException.class,
-                                () -> NativeStruct.setRustStructValue(new RustStruct("test"), null))
-                        .getMessage();
-        assertEquals("Null pointer in get_object_class", msg);
-    }
-
-    @Test
     public void testGetRustStructValueOpt() {
         RustStruct rs = new RustStruct("test");
         assertEquals("test", NativeStruct.getRustStructValueOpt(rs));
