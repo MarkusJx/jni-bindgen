@@ -5,7 +5,7 @@ use syn::Token;
 
 #[derive(Debug, Clone)]
 pub struct BindgenAttrs {
-    /// Whether `#[napi]` attribute exists
+    /// Whether `#[jni]` attribute exists
     pub exists: bool,
     /// List of parsed attributes
     pub attrs: Vec<(Cell<bool>, BindgenAttr)>,

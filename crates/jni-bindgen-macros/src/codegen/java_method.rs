@@ -9,7 +9,6 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use quote::ToTokens;
 use std::collections::HashSet;
-use std::ptr::addr_of;
 use syn::spanned::Spanned;
 use syn::{Attribute, Expr, FnArg, Lit, PatType, Signature, TraitItemFn};
 use syn::{ImplItemFn, Meta};
@@ -202,6 +201,20 @@ impl JavaMethod {
 
         format!(
             "\t{comment}{public} {static_method}{native}{return_type} {}({}){throws}{def}",
+            self.name.to_case(Case::Camel),
+            self.get_args()
+        )
+    }
+
+    pub fn as_interface_declaration(&self) -> String {
+        let return_type = match &self.return_type {
+            Some(t) => t.as_declaration().unwrap(),
+            None => "void".to_string(),
+        };
+
+        let comment = self.get_comment().unwrap_or_default();
+        format!(
+            "\t{comment}{return_type} {}({});",
             self.name.to_case(Case::Camel),
             self.get_args()
         )
@@ -426,7 +439,7 @@ impl JavaMethod {
             .return_type
             .as_ref()
             .map(|r| r.as_jni_declaration())
-            .unwrap_or("V");
+            .unwrap_or("V".to_string());
 
         let decl_str = format!("({}){}", args_decl, ret_decl);
         let java_name = self.name.to_case(Case::Camel);

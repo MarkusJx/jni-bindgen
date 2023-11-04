@@ -8,6 +8,30 @@ const DESTRUCT: &str = r#"
     }
 "#;
 
+pub fn interface(
+    namespace: &str,
+    class_name: &str,
+    methods: String,
+    additional_imports: HashSet<String>,
+) -> String {
+    format_code(format!(
+        r#"
+    package {namespace};
+    
+    {}
+    
+    public interface {class_name} {{
+        {methods}
+    }}
+    "#,
+        additional_imports
+            .into_iter()
+            .map(|i| format!("import {i};"))
+            .collect::<Vec<String>>()
+            .join("\n"),
+    ))
+}
+
 pub fn outer_class(
     namespace: &str,
     class_name: &str,

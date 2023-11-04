@@ -1,9 +1,10 @@
+use crate::codegen::code::interface;
 use crate::codegen::java_method::JavaMethod;
 use crate::codegen::traits::FromDeclaration;
 use crate::util::attrs::BindgenAttrs;
-use crate::util::traits::JniMethod;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
+use std::collections::HashSet;
 use syn::spanned::Spanned;
 use syn::{ItemTrait, TraitItem};
 
@@ -11,8 +12,8 @@ pub struct JavaInterface {
     pub name: String,
     pub methods: Vec<JavaMethod>,
     pub namespace: String,
-    attrs: BindgenAttrs,
-    _decl: ItemTrait,
+    //_attrs: BindgenAttrs,
+    //_decl: ItemTrait,
 }
 
 impl JavaInterface {
@@ -30,9 +31,9 @@ impl JavaInterface {
         Ok(Self {
             name,
             methods,
-            attrs: args.clone(),
+            //_attrs: args.clone(),
             namespace: args.get_namespace()?,
-            _decl: decl.clone(),
+            //_decl: decl.clone(),
         })
     }
 
@@ -47,8 +48,8 @@ impl JavaInterface {
             .collect::<syn::Result<Vec<_>>>()?;
 
         Ok(quote! {
-            struct #struct_name<'local> {
-                obj: jni::objects::JObject<'local>,
+            pub struct #struct_name<'local> {
+                pub obj: jni::objects::JObject<'local>,
             }
 
             impl #trait_name for #struct_name<'_> {
@@ -64,5 +65,23 @@ impl JavaInterface {
                 }
             }
         })
+    }
+
+    pub fn as_java_declaration(&self) -> String {
+        let methods = self
+            .methods
+            .iter()
+            .map(|m| m.as_interface_declaration())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let imports = self
+            .methods
+            .iter()
+            .flat_map(|m| m.get_imports())
+            .filter(|i| !i.contains("NativeExecutionException"))
+            .collect::<HashSet<_>>();
+
+        interface(&self.namespace, &self.name, methods, imports)
     }
 }

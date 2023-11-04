@@ -1,10 +1,12 @@
 use crate::codegen::traits::FromDeclaration;
+use crate::util::attrs::BindgenAttrs;
+use crate::util::traits::JniMethod;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use quote::ToTokens;
 use std::collections::HashSet;
 use syn::spanned::Spanned;
-use syn::{FnArg, PatType, Type, TypePath};
+use syn::{FnArg, GenericArgument, PatType, Type, TypeParamBound, TypePath};
 
 #[derive(Clone)]
 pub struct JavaArg {
@@ -74,7 +76,8 @@ impl JavaArg {
             | JavaType::Reference { .. }
             | JavaType::Object
             | JavaType::Vec { .. }
-            | JavaType::HashMap { .. } => {
+            | JavaType::HashMap { .. }
+            | JavaType::Interface { .. } => {
                 quote!(jni::objects::JObject<'local>)
             }
             rest => rest.as_jni_return_type()?,
@@ -224,6 +227,11 @@ impl JavaArg {
                     jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, #arg_name)
                 ))?
             }
+            JavaType::Interface { inner, .. } => {
+                ret_ty.unwrap_or(&JavaType::Void).match_error(quote!{
+                    <Box<#inner>>::from_jni(&mut env, #arg_name)
+                })?
+            }
         }))
     }
 
@@ -274,8 +282,104 @@ impl JavaArg {
                     "Result is not a valid argument for a JNI method",
                 ))
             }
-            JavaType::Option { .. } => {
-                unimplemented!()
+            JavaType::Option { java_type, inner } => {
+                let inner_arg_name: TokenStream = format!("{}_inner", arg_name).parse()?;
+                match java_type.as_ref() {
+                    JavaType::Integer => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i32_into_jni(
+                                &mut env,
+                                #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Long => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i64_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Float => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::f32_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Double => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::f64_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Boolean => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::bool_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Short => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i16_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Char => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::u16_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Byte => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i8_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::String => {
+                        quote! {
+                            let #inner_arg_name = jni_bindgen::conversion::option_convert::string_into_jni(
+                                &mut env, #arg_name
+                            )?;
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::Vec { ty, .. } => {
+                        quote! {
+                            let #inner_arg_name = if let Some(s) = #arg_name {
+                                jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, s)?
+                            } else {
+                                jni::objects::JObject::null()
+                            };
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    JavaType::HashMap { key, value, .. } => {
+                        quote! {
+                            let #inner_arg_name = if let Some(s) = #arg_name {
+                                jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, s)?
+                            } else {
+                                jni::objects::JObject::null()
+                            };
+                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                        }
+                    }
+                    _ => return Err(syn::Error::new(inner.span(), "Unsupported option type")),
+                }
             }
             JavaType::Reference { .. } => {
                 return Err(syn::Error::new(
@@ -286,11 +390,14 @@ impl JavaArg {
             JavaType::Object => {
                 quote!(let #out_arg = (&#arg_name).into();)
             }
-            JavaType::Vec { .. } => {
-                unimplemented!()
+            JavaType::Vec { ty, .. } => {
+                quote!(let #out_arg = jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, #arg_name);)
             }
-            JavaType::HashMap { .. } => {
-                unimplemented!()
+            JavaType::HashMap { key, value, .. } => {
+                quote!(let #out_arg = jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, #arg_name);)
+            }
+            JavaType::Interface { .. } => {
+                quote!(let #out_arg = #arg_name.obj.into();)
             }
         })
     }
@@ -351,6 +458,10 @@ pub enum JavaType {
         value: Type,
         java_key: Box<JavaType>,
         java_value: Box<JavaType>,
+    },
+    Interface {
+        inner: Type,
+        class_name: String,
     },
 }
 
@@ -446,6 +557,7 @@ impl JavaType {
                 java_key.as_declaration()?,
                 java_value.as_declaration()?
             ),
+            JavaType::Interface { class_name, .. } => class_name.clone(),
         })
     }
 
@@ -477,6 +589,12 @@ impl JavaType {
                 return Err(syn::Error::new(
                     inner.span(),
                     "A reference to a type cannot be returned",
+                ))
+            }
+            JavaType::Interface { inner, .. } => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "Interfaces cannot be returned",
                 ))
             }
         })
@@ -511,6 +629,12 @@ impl JavaType {
                 return Err(syn::Error::new(
                     inner.span(),
                     "A reference to a type cannot be returned",
+                ))
+            }
+            JavaType::Interface { inner, .. } => {
+                return Err(syn::Error::new(
+                    inner.span(),
+                    "Interfaces cannot be returned",
                 ))
             }
         })
@@ -550,50 +674,57 @@ impl JavaType {
                 let value_ty = java_value.as_interface_arg()?;
                 quote!(HashMap<#key_ty, #value_ty>)
             }
+            JavaType::Interface { inner, .. } => quote!(Box<#inner>),
         })
     }
 
-    pub fn as_jni_declaration(&self) -> &'static str {
+    pub fn as_jni_declaration(&self) -> String {
         match self {
-            JavaType::String => "Ljava/lang/String;",
+            JavaType::String => "Ljava/lang/String;".to_string(),
             JavaType::This => panic!("Self is not a valid argument for a JNI method"),
-            JavaType::Void => "V",
-            JavaType::Integer => "I",
-            JavaType::Long => "J",
-            JavaType::Boolean => "Z",
-            JavaType::Float => "F",
-            JavaType::Double => "D",
-            JavaType::Short => "S",
-            JavaType::Char => "C",
-            JavaType::Byte => "B",
+            JavaType::Void => "V".to_string(),
+            JavaType::Integer => "I".to_string(),
+            JavaType::Long => "J".to_string(),
+            JavaType::Boolean => "Z".to_string(),
+            JavaType::Float => "F".to_string(),
+            JavaType::Double => "D".to_string(),
+            JavaType::Short => "S".to_string(),
+            JavaType::Char => "C".to_string(),
+            JavaType::Byte => "B".to_string(),
             JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
             JavaType::Result { java_type, .. } => java_type.as_jni_declaration(),
             JavaType::Option { java_type, .. } => match java_type.as_ref() {
-                JavaType::String => "Ljava/lang/String;",
+                JavaType::String => "Ljava/lang/String;".to_string(),
                 JavaType::This => panic!("Self is not a valid argument for a JNI method"),
-                JavaType::Void => "V",
-                JavaType::Integer => "Ljava/lang/Integer;",
-                JavaType::Long => "Ljava/lang/Long;",
-                JavaType::Boolean => "Ljava/lang/Boolean;",
-                JavaType::Float => "Ljava/lang/Float;",
-                JavaType::Double => "Ljava/lang/Double;",
-                JavaType::Short => "Ljava/lang/Short;",
-                JavaType::Char => "Ljava/lang/Character;",
-                JavaType::Byte => "Ljava/lang/Byte;",
+                JavaType::Void => "V".to_string(),
+                JavaType::Integer => "Ljava/lang/Integer;".to_string(),
+                JavaType::Long => "Ljava/lang/Long;".to_string(),
+                JavaType::Boolean => "Ljava/lang/Boolean;".to_string(),
+                JavaType::Float => "Ljava/lang/Float;".to_string(),
+                JavaType::Double => "Ljava/lang/Double;".to_string(),
+                JavaType::Short => "Ljava/lang/Short;".to_string(),
+                JavaType::Char => "Ljava/lang/Character;".to_string(),
+                JavaType::Byte => "Ljava/lang/Byte;".to_string(),
                 JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
                 JavaType::Result { java_type, .. } => java_type.as_jni_declaration(),
                 JavaType::Option { .. } => {
                     panic!("Option is not a valid argument for a JNI method")
                 }
                 JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
-                JavaType::Object => "Ljava/lang/Object;",
-                JavaType::Vec { .. } => "Ljava/util/List;",
-                JavaType::HashMap { .. } => "Ljava/util/Map;",
+                JavaType::Object => "Ljava/lang/Object;".to_string(),
+                JavaType::Vec { .. } => "Ljava/util/List;".to_string(),
+                JavaType::HashMap { .. } => "Ljava/util/Map;".to_string(),
+                JavaType::Interface { class_name, .. } => {
+                    format!("L{};", class_name.replace('.', "/"))
+                }
             },
             JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
-            JavaType::Object => "Ljava/lang/Object;",
-            JavaType::Vec { .. } => "Ljava/util/List;",
-            JavaType::HashMap { .. } => "Ljava/util/Map;",
+            JavaType::Object => "Ljava/lang/Object;".to_string(),
+            JavaType::Vec { .. } => "Ljava/util/List;".to_string(),
+            JavaType::HashMap { .. } => "Ljava/util/Map;".to_string(),
+            JavaType::Interface { class_name, .. } => {
+                format!("L{};", class_name.replace('.', "/"))
+            }
         }
     }
 
@@ -616,16 +747,118 @@ impl JavaType {
             JavaType::Byte => quote!(res.b().map_err(Into::into)),
             JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
             JavaType::Result { java_type, .. } => java_type.as_rust_return_val(),
-            JavaType::Option { .. } => {
-                unimplemented!()
+            JavaType::Option { java_type, .. } => {
+                match java_type.as_ref() {
+                    JavaType::String => {
+                        quote!(jni_bindgen::conversion::option_convert::string_from_jni(
+                            &mut env,
+                            res.l()?
+                        )
+                        .map_err(Into::into))
+                    }
+                    JavaType::This => panic!("Self is not a valid argument for a JNI method"),
+                    JavaType::Void => quote!(Ok(None)),
+                    JavaType::Integer => quote!(
+                        jni_bindgen::conversion::option_convert::i32_from_jni(&mut env, res.i()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Long => quote!(
+                        jni_bindgen::conversion::option_convert::i64_from_jni(&mut env, res.j()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Boolean => quote!(
+                        jni_bindgen::conversion::option_convert::bool_from_jni(&mut env, res.z()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Float => quote!(
+                        jni_bindgen::conversion::option_convert::f32_from_jni(&mut env, res.f()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Double => quote!(
+                        jni_bindgen::conversion::option_convert::f64_from_jni(&mut env, res.d()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Short => quote!(
+                        jni_bindgen::conversion::option_convert::i16_from_jni(&mut env, res.s()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Char => quote!(
+                        jni_bindgen::conversion::option_convert::u16_from_jni(&mut env, res.c()?)
+                            .map_err(Into::into)
+                    ),
+                    JavaType::Byte => quote!(jni_bindgen::conversion::option_convert::i8_from_jni(
+                        &mut env,
+                        res.b()?
+                    )
+                    .map_err(Into::into)),
+                    JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
+                    JavaType::Result { .. } => {
+                        panic!("Result is not a valid argument for a JNI method")
+                    }
+                    JavaType::Option { .. } => panic!("Option must not be nested"),
+                    JavaType::Reference { inner } => {
+                        let inner = inner.into_token_stream();
+
+                        quote! {
+                            if res.j()?.is_null() {
+                                Ok(None)
+                            } else {
+                                <&#inner>::from_jni(&mut env, res.j()?).map(Some).map_err(Into::into)
+                            }
+                        }
+                    }
+                    JavaType::Object => {
+                        quote! {
+                            if res.l()?.is_null() {
+                                Ok(None)
+                            } else {
+                                Ok(Some(res.l()?.into()))
+                            }
+                        }
+                    }
+                    JavaType::Vec { ty, .. } => {
+                        quote! {
+                            if res.l()?.is_null() {
+                                Ok(None)
+                            } else {
+                                jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, res.l()?)
+                                    .map(Some)
+                                    .map_err(Into::into)
+                            }
+                        }
+                    }
+                    JavaType::HashMap { key, value, .. } => {
+                        quote! {
+                            if res.l()?.is_null() {
+                                Ok(None)
+                            } else {
+                                jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, res.l()?)
+                                    .map(Some)
+                                    .map_err(Into::into)
+                            }
+                        }
+                    }
+                    JavaType::Interface { inner, .. } => {
+                        quote! {
+                            if res.l()?.is_null() {
+                                Ok(None)
+                            } else {
+                                <Box<#inner>>::from_jni(&mut env, res.l()?).map(Some).map_err(Into::into)
+                            }
+                        }
+                    }
+                }
             }
             JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
             JavaType::Object => quote!(res.l().map_err(Into::into)),
-            JavaType::Vec { .. } => {
-                unimplemented!()
+            JavaType::Vec { ty, .. } => {
+                quote!(jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, res.l()?).map_err(Into::into))
             }
-            JavaType::HashMap { .. } => {
-                unimplemented!()
+            JavaType::HashMap { key, value, .. } => {
+                quote!(jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, res.l()?).map_err(Into::into))
+            }
+            JavaType::Interface { inner, .. } => {
+                quote!(Box<#inner>::from_jni(&mut env, res.l()?).map_err(Into::into))
             }
         }
     }
@@ -763,6 +996,10 @@ impl JavaType {
             JavaType::HashMap { key, value, .. } => {
                 self.match_error(quote!(jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, res)))?
             }
+            JavaType::Interface { inner, .. } => return Err(syn::Error::new(
+                inner.span(),
+                "Interfaces cannot be returned"
+            ))
         })
     }
 
@@ -791,13 +1028,166 @@ impl JavaType {
             }
         })
     }
+
+    fn match_typed<T: Spanned>(
+        ty: &Type,
+        decl: &T,
+        attr: Option<BindgenAttrs>,
+    ) -> syn::Result<Option<Self>> {
+        match ty {
+            Type::Path(path) => {
+                if let Some(last) = path.path.segments.last() {
+                    match last.ident.to_string().as_str() {
+                        "Result" | "Option" | "Vec" | "Box" => {
+                            if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+                                if let Some(GenericArgument::Type(ty)) = args.args.first() {
+                                    match last.ident.to_string().as_str() {
+                                        "Result" => {
+                                            return Ok(Some(JavaType::Result {
+                                                result_type: path.clone(),
+                                                java_type: Box::new(JavaType::from_declaration(
+                                                    &Box::new(ty.clone()),
+                                                )?),
+                                            }))
+                                        }
+                                        "Option" => {
+                                            return Ok(Some(JavaType::Option {
+                                                java_type: Box::new(JavaType::from_declaration(
+                                                    &Box::new(ty.clone()),
+                                                )?),
+                                                inner: ty.clone(),
+                                            }))
+                                        }
+                                        "Vec" => {
+                                            return Ok(Some(JavaType::Vec {
+                                                ty: ty.clone(),
+                                                java_type: Box::new(JavaType::from_declaration(
+                                                    &Box::new(ty.clone()),
+                                                )?),
+                                            }))
+                                        }
+                                        "Box" => {
+                                            let mut ty = ty.clone();
+                                            if let Type::TraitObject(obj) = &mut ty {
+                                                if let Some(l) =
+                                                    obj.bounds.iter_mut().find_map(|b| match b {
+                                                        TypeParamBound::Lifetime(l) => Some(l),
+                                                        _ => None,
+                                                    })
+                                                {
+                                                    l.ident = Ident::new("local", l.ident.span());
+                                                } else {
+                                                    return Err(syn::Error::new(
+                                                        decl.span(),
+                                                        "Box must have a lifetime parameter",
+                                                    ));
+                                                }
+                                            } else {
+                                                return Err(syn::Error::new(
+                                                    decl.span(),
+                                                    "Box must have a dyn Trait parameter",
+                                                ));
+                                            }
+
+                                            if !args
+                                                .args
+                                                .iter()
+                                                .any(|a| matches!(a, GenericArgument::Type(_)))
+                                            {
+                                                return Err(syn::Error::new(
+                                                    decl.span(),
+                                                    "Box must have a lifetime parameter",
+                                                ));
+                                            }
+
+                                            let Some(attr) = attr else {
+                                                return Err(syn::Error::new(
+                                                    decl.span(),
+                                                    "Box must have a #[jni(class_name = \"...\")] attribute",
+                                                ));
+                                            };
+
+                                            return Ok(Some(JavaType::Interface {
+                                                inner: ty.clone(),
+                                                class_name: attr
+                                                    .get_class_name()
+                                                    .ok_or(syn::Error::new(
+                                                    decl.span(),
+                                                    "jni attribute must have a class_name member",
+                                                ))?,
+                                            }));
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                }
+                            }
+                        }
+                        "JObject" => return Ok(Some(JavaType::Object)),
+                        "HashMap" => {
+                            if let syn::PathArguments::AngleBracketed(args) = &last.arguments {
+                                if let Some(GenericArgument::Type(ty)) = args.args.first() {
+                                    if let Some(GenericArgument::Type(ty2)) = args.args.last() {
+                                        return Ok(Some(JavaType::HashMap {
+                                            key: ty.clone(),
+                                            value: ty2.clone(),
+                                            java_key: Box::new(JavaType::from_declaration(
+                                                &Box::new(ty.clone()),
+                                            )?),
+                                            java_value: Box::new(JavaType::from_declaration(
+                                                &Box::new(ty2.clone()),
+                                            )?),
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Type::Reference(reference) => {
+                if let Type::Path(path) = reference.elem.as_ref() {
+                    if let Some(last) = path.path.segments.last() {
+                        if last.ident == "JNIEnv" {
+                            return Ok(Some(JavaType::Env {
+                                mutable: reference.mutability.is_some(),
+                                inner: ty.clone(),
+                            }));
+                        }
+                    }
+
+                    return if reference.mutability.is_some() {
+                        Err(syn::Error::new(
+                            decl.span(),
+                            "Mutable references are not supported",
+                        ))
+                    } else {
+                        Ok(Some(JavaType::Reference {
+                            inner: path.clone(),
+                        }))
+                    };
+                }
+            }
+            _ => {}
+        }
+
+        Ok(None)
+    }
 }
 
 impl FromDeclaration<&FnArg, JavaType> for JavaType {
     fn from_declaration(decl: &FnArg) -> syn::Result<Self> {
         match decl {
             FnArg::Receiver(_) => Ok(JavaType::This),
-            FnArg::Typed(PatType { ty, .. }) => Self::from_declaration(ty),
+            FnArg::Typed(PatType { ty, attrs, .. }) => {
+                let attr = attrs.get_jni_attr();
+
+                if let Some(res) = Self::match_typed(ty, decl, attr)? {
+                    Ok(res)
+                } else {
+                    Self::from_declaration(ty)
+                }
+            }
         }
     }
 }
@@ -824,105 +1214,14 @@ impl FromDeclaration<&Box<Type>, JavaType> for JavaType {
                 }
             }
             _ => {
-                match decl.as_ref() {
-                    Type::Path(path) => {
-                        if let Some(last) = path.path.segments.last() {
-                            match last.ident.to_string().as_str() {
-                                "Result" | "Option" | "Vec" => {
-                                    if let syn::PathArguments::AngleBracketed(args) =
-                                        &last.arguments
-                                    {
-                                        if let Some(syn::GenericArgument::Type(ty)) =
-                                            args.args.first()
-                                        {
-                                            match last.ident.to_string().as_str() {
-                                                "Result" => {
-                                                    return Ok(JavaType::Result {
-                                                        result_type: path.clone(),
-                                                        java_type: Box::new(
-                                                            JavaType::from_declaration(&Box::new(
-                                                                ty.clone(),
-                                                            ))?,
-                                                        ),
-                                                    })
-                                                }
-                                                "Option" => {
-                                                    return Ok(JavaType::Option {
-                                                        java_type: Box::new(
-                                                            JavaType::from_declaration(&Box::new(
-                                                                ty.clone(),
-                                                            ))?,
-                                                        ),
-                                                        inner: ty.clone(),
-                                                    })
-                                                }
-                                                "Vec" => {
-                                                    return Ok(JavaType::Vec {
-                                                        ty: ty.clone(),
-                                                        java_type: Box::new(
-                                                            JavaType::from_declaration(&Box::new(
-                                                                ty.clone(),
-                                                            ))?,
-                                                        ),
-                                                    })
-                                                }
-                                                _ => unreachable!(),
-                                            }
-                                        }
-                                    }
-                                }
-                                "JObject" => return Ok(JavaType::Object),
-                                "HashMap" => {
-                                    if let syn::PathArguments::AngleBracketed(args) =
-                                        &last.arguments
-                                    {
-                                        if let Some(syn::GenericArgument::Type(ty)) =
-                                            args.args.first()
-                                        {
-                                            if let Some(syn::GenericArgument::Type(ty2)) =
-                                                args.args.last()
-                                            {
-                                                return Ok(JavaType::HashMap {
-                                                    key: ty.clone(),
-                                                    value: ty2.clone(),
-                                                    java_key: Box::new(JavaType::from_declaration(
-                                                        &Box::new(ty.clone()),
-                                                    )?),
-                                                    java_value: Box::new(
-                                                        JavaType::from_declaration(&Box::new(
-                                                            ty2.clone(),
-                                                        ))?,
-                                                    ),
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    Type::Reference(reference) => {
-                        if let Type::Path(path) = reference.elem.as_ref() {
-                            return if reference.mutability.is_some() {
-                                Err(syn::Error::new(
-                                    decl.span(),
-                                    "Mutable references are not supported",
-                                ))
-                            } else {
-                                Ok(JavaType::Reference {
-                                    inner: path.clone(),
-                                })
-                            };
-                        }
-                    }
-                    _ => {}
+                if let Some(res) = Self::match_typed(decl, decl, None)? {
+                    res
+                } else {
+                    Err(syn::Error::new(
+                        decl.span(),
+                        format!("Unsupported type: '{}'", decl.into_token_stream()),
+                    ))?
                 }
-
-                Err(syn::Error::new(
-                    decl.span(),
-                    format!("Unsupported type: '{}'", decl.into_token_stream()),
-                ))?
             }
         })
     }
