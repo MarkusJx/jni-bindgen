@@ -19,4 +19,13 @@ public class TestInterface {
                         }));
         Assertions.assertTrue(called.get());
     }
+
+    @Test
+    public void testUseInterfaceNull() {
+        var message =
+                Assertions.assertThrows(
+                                NullPointerException.class, () -> StructUsingTrait.useTrait(null))
+                        .getMessage();
+        Assertions.assertEquals("Null pointer in call_method obj argument", message);
+    }
 }

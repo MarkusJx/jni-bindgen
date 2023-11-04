@@ -3,7 +3,7 @@ use crate::codegen::java_method::JavaMethod;
 use crate::codegen::traits::FromDeclaration;
 use crate::util::attrs::BindgenAttrs;
 use crate::util::quotes;
-use crate::util::traits::JniMethod;
+use crate::util::traits::{GetComment, JniMethod};
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
@@ -16,7 +16,7 @@ pub struct JavaClass {
     pub constructors: Vec<JavaMethod>,
     pub namespace: String,
     attrs: BindgenAttrs,
-    _decl: ItemImpl,
+    decl: ItemImpl,
 }
 
 impl JavaClass {
@@ -58,7 +58,7 @@ impl JavaClass {
             constructors,
             attrs: args.clone(),
             namespace: args.get_namespace()?,
-            _decl: decl.clone(),
+            decl: decl.clone(),
         })
     }
 
@@ -143,6 +143,7 @@ impl JavaClass {
         outer_class(
             &self.namespace,
             &self.name,
+            self.decl.attrs.get_comment().unwrap_or_default(),
             self.methods
                 .iter()
                 .map(|m| m.as_declaration(&self.name, true))

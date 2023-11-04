@@ -1,7 +1,7 @@
 use crate::codegen::java_type::{JNIArgGetter, JavaArg, JavaType};
 use crate::codegen::traits::FromDeclaration;
 use crate::util::quotes;
-use crate::util::traits::JniMethod;
+use crate::util::traits::{GetComment, JniMethod};
 use convert_case::{Case, Casing};
 use indexmap::IndexMap;
 use proc_macro2::Ident;
@@ -10,8 +10,8 @@ use quote::quote;
 use quote::ToTokens;
 use std::collections::HashSet;
 use syn::spanned::Spanned;
-use syn::{Attribute, Expr, FnArg, Lit, PatType, Signature, TraitItemFn};
-use syn::{ImplItemFn, Meta};
+use syn::ImplItemFn;
+use syn::{Attribute, FnArg, PatType, Signature, TraitItemFn};
 
 #[derive(Clone)]
 pub struct JavaMethod {
@@ -468,26 +468,7 @@ impl JavaMethod {
     fn get_comment(&self) -> Option<String> {
         self._decl
             .as_ref()
-            .map(|decl| {
-                decl.attrs()
-                    .iter()
-                    .filter(|a| a.path().clone().into_token_stream().to_string() == "doc")
-                    .filter_map(|a| {
-                        if let Meta::NameValue(list) = &a.meta {
-                            if let Expr::Lit(s) = &list.value {
-                                if let Lit::Str(s) = &s.lit {
-                                    return Some(("* ".to_string() + s.value().trim()).to_string());
-                                }
-                            }
-                        }
-
-                        None
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            })
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("/**\n{}\n */\n", s))
+            .and_then(|decl| decl.attrs().get_comment())
     }
 
     fn from_sig(sig: &Signature, name: String, decl: ImplOrTraitFn) -> syn::Result<Self> {

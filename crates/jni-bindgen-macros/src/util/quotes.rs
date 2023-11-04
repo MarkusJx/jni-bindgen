@@ -101,6 +101,7 @@ pub fn get_type_hash(base_name: TokenStream, struct_name: String) -> TokenStream
 pub fn from_jni(struct_name: String) -> TokenStream {
     let struct_name: TokenStream = struct_name.parse().unwrap();
     quote! {
+        #[automatically_derived]
         impl<'local> FromJNI<'local> for &'local #struct_name {
             fn from_jni(
                 env: &mut jni::JNIEnv<'local>,
@@ -110,6 +111,7 @@ pub fn from_jni(struct_name: String) -> TokenStream {
             }
         }
 
+        #[automatically_derived]
         impl<'local> ObjectFromJNI<'local> for &'local #struct_name {}
     }
 }

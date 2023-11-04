@@ -2,6 +2,7 @@ use crate::codegen::code::interface;
 use crate::codegen::java_method::JavaMethod;
 use crate::codegen::traits::FromDeclaration;
 use crate::util::attrs::BindgenAttrs;
+use crate::util::traits::GetComment;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::collections::HashSet;
@@ -13,7 +14,7 @@ pub struct JavaInterface {
     pub methods: Vec<JavaMethod>,
     pub namespace: String,
     //_attrs: BindgenAttrs,
-    //_decl: ItemTrait,
+    decl: ItemTrait,
 }
 
 impl JavaInterface {
@@ -33,7 +34,7 @@ impl JavaInterface {
             methods,
             //_attrs: args.clone(),
             namespace: args.get_namespace()?,
-            //_decl: decl.clone(),
+            decl: decl.clone(),
         })
     }
 
@@ -52,10 +53,12 @@ impl JavaInterface {
                 pub obj: jni::objects::JObject<'local>,
             }
 
+            #[automatically_derived]
             impl #trait_name for #struct_name<'_> {
                 #(#methods)*
             }
 
+            #[automatically_derived]
             impl<'local> FromJNI<'local> for Box<dyn #trait_name + 'local> {
                 fn from_jni(
                     env: &mut jni::JNIEnv<'local>,
@@ -82,6 +85,12 @@ impl JavaInterface {
             .filter(|i| !i.contains("NativeExecutionException"))
             .collect::<HashSet<_>>();
 
-        interface(&self.namespace, &self.name, methods, imports)
+        interface(
+            &self.namespace,
+            &self.name,
+            self.decl.attrs.get_comment().unwrap_or_default(),
+            methods,
+            imports,
+        )
     }
 }

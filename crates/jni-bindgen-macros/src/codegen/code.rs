@@ -11,6 +11,7 @@ const DESTRUCT: &str = r#"
 pub fn interface(
     namespace: &str,
     class_name: &str,
+    comment: String,
     methods: String,
     additional_imports: HashSet<String>,
 ) -> String {
@@ -20,6 +21,7 @@ pub fn interface(
     
     {}
     
+    {comment}
     public interface {class_name} {{
         {methods}
     }}
@@ -35,6 +37,7 @@ pub fn interface(
 pub fn outer_class(
     namespace: &str,
     class_name: &str,
+    comment: String,
     methods: String,
     mut constructors: String,
     inner: String,
@@ -73,6 +76,7 @@ pub fn outer_class(
 
         {}
         
+        {comment}
         public class {class_name} {implements}{{
     {inner_ty}
     
@@ -171,9 +175,17 @@ fn format_code(code: String) -> String {
             }
 
             let next = split.get(i + 1).map(|s| s.to_string()).unwrap_or_default();
+            let last = if i > 0 {
+                split.get(i - 1).map(|s| s.to_string()).unwrap_or_default()
+            } else {
+                "".to_string()
+            };
+
             let res = format!(
                 "{pre_newline}{indent}{line}{newline}",
-                pre_newline = if line.starts_with("public class") {
+                pre_newline = if (line.starts_with("public class") && !last.contains('*'))
+                    || (line.starts_with("/**") && last.starts_with("import"))
+                {
                     "\n"
                 } else {
                     ""
