@@ -86,14 +86,17 @@ pub fn get_type_hash(base_name: TokenStream, struct_name: String) -> TokenStream
     quote!(
         #[no_mangle]
         pub extern "system" fn #get_type_hash<'local>(
-            mut env: jni::JNIEnv<'local>,
+            _env: jni::JNIEnv<'local>,
             _class: jni::objects::JClass<'local>,
         ) -> jni::sys::jlong {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            std::any::TypeId::of::<#struct_name>().hash(&mut hasher);
+            static CELL: std::sync::OnceLock<jni::sys::jlong> = std::sync::OnceLock::new();
+            *CELL.get_or_init(|| {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                std::any::TypeId::of::<#struct_name>().hash(&mut hasher);
 
-            hasher.finish() as jni::sys::jlong
+                hasher.finish() as jni::sys::jlong
+            })
         }
     )
 }

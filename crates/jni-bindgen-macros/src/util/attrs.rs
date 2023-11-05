@@ -98,7 +98,7 @@ impl Parse for AnyIdent {
 macro_rules! attrgen {
     ($mac:ident) => {
         $mac! {
-            (namespace, Namespace(Span, String, Span)),
+            (package, Namespace(Span, String, Span)),
             (rename, Rename(Span, String, Span)),
             (constructor, Constructor(Span)),
             (load_lib, LoadLib(Span, String, Span)),

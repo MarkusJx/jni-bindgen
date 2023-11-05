@@ -240,6 +240,7 @@ impl JavaArg {
         arg_name: TokenStream,
         out_arg: TokenStream,
     ) -> syn::Result<TokenStream> {
+        let inner_arg_name: TokenStream = format!("{}_inner", arg_name).parse()?;
         Ok(match &self.java_type {
             JavaType::String => {
                 let inner_arg_name: TokenStream = format!("{}_inner", arg_name).parse()?;
@@ -282,105 +283,154 @@ impl JavaArg {
                     "Result is not a valid argument for a JNI method",
                 ))
             }
-            JavaType::Option { java_type, inner } => {
-                let inner_arg_name: TokenStream = format!("{}_inner", arg_name).parse()?;
-                match java_type.as_ref() {
-                    JavaType::Integer => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i32_into_jni(
-                                &mut env,
-                                #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
+            JavaType::Option { java_type, inner } => match java_type.as_ref() {
+                JavaType::Integer => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::i32_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
                     }
-                    JavaType::Long => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i64_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Float => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::f32_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Double => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::f64_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Boolean => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::bool_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Short => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i16_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Char => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::u16_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Byte => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::i8_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::String => {
-                        quote! {
-                            let #inner_arg_name = jni_bindgen::conversion::option_convert::string_into_jni(
-                                &mut env, #arg_name
-                            )?;
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::Vec { ty, .. } => {
-                        quote! {
-                            let #inner_arg_name = if let Some(s) = #arg_name {
-                                jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, s)?
-                            } else {
-                                jni::objects::JObject::null()
-                            };
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    JavaType::HashMap { key, value, .. } => {
-                        quote! {
-                            let #inner_arg_name = if let Some(s) = #arg_name {
-                                jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, s)?
-                            } else {
-                                jni::objects::JObject::null()
-                            };
-                            let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
-                        }
-                    }
-                    _ => return Err(syn::Error::new(inner.span(), "Unsupported option type")),
                 }
-            }
+                JavaType::Long => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::i64_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Float => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::f32_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Double => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::f64_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Boolean => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::bool_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Short => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::i16_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Char => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::u16_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Byte => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::i8_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::String => {
+                    quote! {
+                        let #inner_arg_name = unsafe {
+                            jni::objects::JObject::from_raw(
+                                jni_bindgen::conversion::option_convert::string_into_jni(
+                                    env,
+                                    #arg_name
+                                )?
+                            )
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::Vec { ty, .. } => {
+                    quote! {
+                        let #inner_arg_name = if let Some(s) = #arg_name {
+                            unsafe {
+                                jni::objects::JObject::from_raw(
+                                    jni_bindgen::conversion::object_convert::from_vec::<#ty>(env, s)?
+                                )
+                            }
+                        } else {
+                            jni::objects::JObject::null()
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                JavaType::HashMap { key, value, .. } => {
+                    quote! {
+                        let #inner_arg_name = if let Some(s) = #arg_name {
+                            unsafe {
+                                jni::objects::JObject::from_raw(
+                                    jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(env, s)?
+                                )
+                            }
+                        } else {
+                            jni::objects::JObject::null()
+                        };
+                        let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                    }
+                }
+                _ => return Err(syn::Error::new(inner.span(), "Unsupported option type")),
+            },
             JavaType::Reference { .. } => {
                 return Err(syn::Error::new(
                     self.get_span(),
@@ -391,10 +441,20 @@ impl JavaArg {
                 quote!(let #out_arg = (&#arg_name).into();)
             }
             JavaType::Vec { ty, .. } => {
-                quote!(let #out_arg = jni_bindgen::conversion::object_convert::from_vec::<#ty>(&mut env, #arg_name);)
+                quote! {
+                    let #inner_arg_name = unsafe {
+                        jni::objects::JObject::from_raw(jni_bindgen::conversion::object_convert::from_vec::<#ty>(env, #arg_name)?)
+                    };
+                    let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                }
             }
             JavaType::HashMap { key, value, .. } => {
-                quote!(let #out_arg = jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(&mut env, #arg_name);)
+                quote! {
+                    let #inner_arg_name = unsafe {
+                        jni::objects::JObject::from_raw(jni_bindgen::conversion::object_convert::from_hashmap::<#key, #value>(env, #arg_name)?)
+                    };
+                    let #out_arg = jni::objects::JValue::from(&#inner_arg_name);
+                }
             }
             JavaType::Interface { .. } => {
                 quote!(let #out_arg = #arg_name.obj.into();)
@@ -616,7 +676,7 @@ impl JavaType {
             | JavaType::Char
             | JavaType::Byte => quote!(0),
             JavaType::Void => quote!(),
-            JavaType::Boolean => quote!(false),
+            JavaType::Boolean => quote!(jni::sys::JNI_FALSE),
             JavaType::Float | JavaType::Double => quote!(0.0),
             JavaType::Result { java_type, .. } => java_type.error_return_val()?,
             JavaType::Env { inner, .. } => {
@@ -751,7 +811,7 @@ impl JavaType {
                 match java_type.as_ref() {
                     JavaType::String => {
                         quote!(jni_bindgen::conversion::option_convert::string_from_jni(
-                            &mut env,
+                            env,
                             res.l()?
                         )
                         .map_err(Into::into))
@@ -759,36 +819,36 @@ impl JavaType {
                     JavaType::This => panic!("Self is not a valid argument for a JNI method"),
                     JavaType::Void => quote!(Ok(None)),
                     JavaType::Integer => quote!(
-                        jni_bindgen::conversion::option_convert::i32_from_jni(&mut env, res.i()?)
+                        jni_bindgen::conversion::option_convert::i32_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Long => quote!(
-                        jni_bindgen::conversion::option_convert::i64_from_jni(&mut env, res.j()?)
+                        jni_bindgen::conversion::option_convert::i64_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Boolean => quote!(
-                        jni_bindgen::conversion::option_convert::bool_from_jni(&mut env, res.z()?)
+                        jni_bindgen::conversion::option_convert::bool_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Float => quote!(
-                        jni_bindgen::conversion::option_convert::f32_from_jni(&mut env, res.f()?)
+                        jni_bindgen::conversion::option_convert::f32_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Double => quote!(
-                        jni_bindgen::conversion::option_convert::f64_from_jni(&mut env, res.d()?)
+                        jni_bindgen::conversion::option_convert::f64_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Short => quote!(
-                        jni_bindgen::conversion::option_convert::i16_from_jni(&mut env, res.s()?)
+                        jni_bindgen::conversion::option_convert::i16_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Char => quote!(
-                        jni_bindgen::conversion::option_convert::u16_from_jni(&mut env, res.c()?)
+                        jni_bindgen::conversion::option_convert::u16_from_jni(env, res.l()?)
                             .map_err(Into::into)
                     ),
                     JavaType::Byte => quote!(jni_bindgen::conversion::option_convert::i8_from_jni(
-                        &mut env,
-                        res.b()?
+                        env,
+                        res.l()?
                     )
                     .map_err(Into::into)),
                     JavaType::Env { .. } => panic!("Env is not a valid argument for a JNI method"),
@@ -800,28 +860,31 @@ impl JavaType {
                         let inner = inner.into_token_stream();
 
                         quote! {
-                            if res.j()?.is_null() {
+                            let res_unpacked = res.l()?;
+                            if res_unpacked.is_null() {
                                 Ok(None)
                             } else {
-                                <&#inner>::from_jni(&mut env, res.j()?).map(Some).map_err(Into::into)
+                                <&#inner>::from_jni(env, res_unpacked).map(Some).map_err(Into::into)
                             }
                         }
                     }
                     JavaType::Object => {
                         quote! {
-                            if res.l()?.is_null() {
+                            let res_unpacked = res.l()?;
+                            if res_unpacked.is_null() {
                                 Ok(None)
                             } else {
-                                Ok(Some(res.l()?.into()))
+                                Ok(Some(res_unpacked.into()))
                             }
                         }
                     }
                     JavaType::Vec { ty, .. } => {
                         quote! {
-                            if res.l()?.is_null() {
+                            let res_unpacked = res.l()?;
+                            if res_unpacked.is_null() {
                                 Ok(None)
                             } else {
-                                jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, res.l()?)
+                                jni_bindgen::conversion::object_convert::into_vec::<#ty>(env, res_unpacked)
                                     .map(Some)
                                     .map_err(Into::into)
                             }
@@ -829,10 +892,11 @@ impl JavaType {
                     }
                     JavaType::HashMap { key, value, .. } => {
                         quote! {
-                            if res.l()?.is_null() {
+                            let res_unpacked = res.l()?;
+                            if res_unpacked.is_null() {
                                 Ok(None)
                             } else {
-                                jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, res.l()?)
+                                jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(env, res_unpacked)
                                     .map(Some)
                                     .map_err(Into::into)
                             }
@@ -840,10 +904,11 @@ impl JavaType {
                     }
                     JavaType::Interface { inner, .. } => {
                         quote! {
-                            if res.l()?.is_null() {
+                            let res_unpacked = res.l()?;
+                            if res_unpacked.is_null() {
                                 Ok(None)
                             } else {
-                                <Box<#inner>>::from_jni(&mut env, res.l()?).map(Some).map_err(Into::into)
+                                <Box<#inner>>::from_jni(env, res_unpacked).map(Some).map_err(Into::into)
                             }
                         }
                     }
@@ -852,13 +917,13 @@ impl JavaType {
             JavaType::Reference { .. } => panic!("A reference to a type cannot be passed"),
             JavaType::Object => quote!(res.l().map_err(Into::into)),
             JavaType::Vec { ty, .. } => {
-                quote!(jni_bindgen::conversion::object_convert::into_vec::<#ty>(&mut env, res.l()?).map_err(Into::into))
+                quote!(jni_bindgen::conversion::object_convert::into_vec::<#ty>(env, res.l()?).map_err(Into::into))
             }
             JavaType::HashMap { key, value, .. } => {
-                quote!(jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(&mut env, res.l()?).map_err(Into::into))
+                quote!(jni_bindgen::conversion::object_convert::into_hashmap::<#key, #value>(env, res.l()?).map_err(Into::into))
             }
             JavaType::Interface { inner, .. } => {
-                quote!(Box<#inner>::from_jni(&mut env, res.l()?).map_err(Into::into))
+                quote!(Box<#inner>::from_jni(env, res.l()?).map_err(Into::into))
             }
         }
     }
@@ -1068,7 +1133,26 @@ impl JavaType {
                                         }
                                         "Box" => {
                                             let mut ty = ty.clone();
+                                            let mut class_name;
+
                                             if let Type::TraitObject(obj) = &mut ty {
+                                                class_name = obj
+                                                    .bounds
+                                                    .iter()
+                                                    .find_map(|b| match b {
+                                                        TypeParamBound::Trait(t) => Some(t),
+                                                        _ => None,
+                                                    })
+                                                    .map(|t| {
+                                                        t.path
+                                                            .segments
+                                                            .iter()
+                                                            .filter(|s| s.ident != "crate")
+                                                            .map(|s| s.ident.to_string())
+                                                            .collect::<Vec<_>>()
+                                                            .join(".")
+                                                    });
+
                                                 if let Some(l) =
                                                     obj.bounds.iter_mut().find_map(|b| match b {
                                                         TypeParamBound::Lifetime(l) => Some(l),
@@ -1100,21 +1184,32 @@ impl JavaType {
                                                 ));
                                             }
 
-                                            let Some(attr) = attr else {
-                                                return Err(syn::Error::new(
-                                                    decl.span(),
-                                                    "Box must have a #[jni(class_name = \"...\")] attribute",
-                                                ));
-                                            };
+                                            if class_name.is_none() {
+                                                let Some(attr) = attr.as_ref() else {
+                                                    return Err(syn::Error::new(
+                                                        decl.span(),
+                                                        "Box must have a #[jni(class_name = \"...\")] attribute",
+                                                    ));
+                                                };
+
+                                                class_name = Some(
+                                                    attr
+                                                        .get_class_name()
+                                                        .ok_or(syn::Error::new(
+                                                            decl.span(),
+                                                            "jni attribute must have a class_name member",
+                                                        ))?
+                                                );
+                                            } else if let Some(attr) = attr.as_ref() {
+                                                if let Some(class_name_attr) = attr.get_class_name()
+                                                {
+                                                    class_name = Some(class_name_attr);
+                                                }
+                                            }
 
                                             return Ok(Some(JavaType::Interface {
                                                 inner: ty.clone(),
-                                                class_name: attr
-                                                    .get_class_name()
-                                                    .ok_or(syn::Error::new(
-                                                    decl.span(),
-                                                    "jni attribute must have a class_name member",
-                                                ))?,
+                                                class_name: class_name.unwrap(),
                                             }));
                                         }
                                         _ => unreachable!(),

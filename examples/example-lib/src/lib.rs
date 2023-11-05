@@ -22,7 +22,7 @@ impl Drop for RustStruct {
 
 struct NativeStruct;
 
-#[jni(namespace = "com.github.markusjx.generated", load_lib = "example_lib")]
+#[jni(package = "com.github.markusjx.generated", load_lib = "example_lib")]
 impl NativeStruct {
     #[jni]
     fn get_rust_struct_value(rust_struct: &RustStruct) -> String {
@@ -65,7 +65,7 @@ impl NativeStruct {
     }
 }
 
-#[jni(namespace = "com.github.markusjx.generated", load_lib = "example_lib")]
+#[jni(package = "com.github.markusjx.generated", load_lib = "example_lib")]
 impl RustStruct {
     #[jni(constructor, rename = "initSingle")]
     /// Create a new RustStruct with the given value

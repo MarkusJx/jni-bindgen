@@ -84,6 +84,14 @@ pub fn outer_class(
 
     {methods}
     
+    /**
+     * Get the type of the underlying native class
+     * in a hashed form. This is used to check if
+     * the native class is the same as the one
+     * that is expected.
+     *
+     * @return The type hash of this class
+     */
     public static long getTypeHash() {{
         return {class_name}Native.getTypeHash();
     }}
