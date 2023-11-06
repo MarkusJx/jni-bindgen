@@ -132,7 +132,7 @@ impl RustStruct {
 
     #[jni]
     fn throw_error(msg: String) -> anyhow::Result<()> {
-        bail!(msg)
+        bail!("{msg}")
     }
 
     #[jni]

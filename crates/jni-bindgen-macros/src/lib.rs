@@ -7,19 +7,32 @@ mod codegen;
 mod util;
 
 /// This macro will generate the JNI bindings for the given class.
-/// It can only be used on `impl` blocks and its methods.
+/// It can be used on `impl` blocks and its methods plus on `trait`s.
 ///
 /// If an `impl` block has this macro, jni methods for all methods
 /// inside that block also annotated with `#[jni]` will be generated.
 /// The associated `struct` must not be annotated with `#[jni]`.
+/// If a method has a `&self` parameter, it must not be mutable
+/// as the method may be called from multiple threads at once.
+/// Also, the `struct` must be [`Send`] and [`Sync`].
+///
+/// If a `trait` has this macro, a java interface will be generated.
+/// The methods inside the `trait` are not required to be annotated with `#[jni]`
+/// as an interface containing all methods will be generated. The `trait` must
+/// not have any associated types. All methods must have a `&mut JNIEnv` parameter
+/// and a `&self` parameter. The `self` parameter must not be mutable.
+/// All methods must return a [`Result`], preferably a [`jni_bindgen::Result`]
+/// as the method may throw an exception.
 ///
 /// # Arguments
-/// * `namespace` - *Required* The namespace of the class.
+/// * `package` - *Required* The package of the class.
 /// * `load_lib` - The name of the library to load. If this is specified,
 ///               the library will be loaded using `System.loadLibrary`.
 ///              If this is not specified, the library will not be loaded automatically.
 /// * `rename` - The name of the class. If this is specified, the (java) class will be renamed.
 /// * `constructor` - If this is specified, the constructor will be renamed.
+/// * `class_name` - May be used on trait method parameters. If this is specified,
+///                the parameter will be of type `class_name` instead of the trait name.
 ///
 /// # Supported types
 /// | Rust type | Java type |
@@ -47,6 +60,7 @@ mod util;
 /// | [`Option<i8>`] | `java.lang.Byte` |
 /// | [`Option<u16>`] | `java.lang.Character` |
 /// | [`Option<String>`] | `java.lang.String` |
+/// | [`Box<dyn Trait + 'lifetime>`] | A java interface |
 /// | Any other [`Option`] | The wrapped type |
 ///
 /// # Returning errors
@@ -58,7 +72,8 @@ mod util;
 /// If you want to throw a custom exception, you can use the [`bail_class!`](jni_bindgen::bail_class)
 /// or [`error_class!`](jni_bindgen::error_class) macros while returning a [`jni_bindgen::Result<T>`].
 ///
-/// # Example
+/// # Examples
+/// ## Export a struct to java
 /// ```
 /// use jni_bindgen_macros::jni;
 ///
@@ -67,7 +82,7 @@ mod util;
 /// }
 ///
 /// #[jni(namespace = "com.github.markusjx.generated")]
-/// impl RustStruct {
+/// impl MyClass {
 ///     #[jni(constructor, rename = "newInstance")]
 ///     fn new(value: String) -> Self {
 ///         Self { value }
@@ -81,6 +96,29 @@ mod util;
 ///     #[jni]
 ///     fn throws_error() -> anyhow::Result<()> {
 ///         Err(anyhow::anyhow!("Error"))
+///     }
+/// }
+/// ```
+///
+/// ## Export a trait to java
+/// ```
+/// use jni_bindgen_macros::jni;
+///
+/// #[jni(package = "com.github.markusjx.generated")]
+/// pub trait ApplyString {
+///    fn apply(&self, env: &mut JNIEnv, val: String) -> jni_bindgen::Result<String>;
+/// }
+///
+/// struct MyStruct;
+///
+/// #[jni(package = "com.github.markusjx.generated", load_lib = "example_lib")]
+/// impl MyStruct {
+///    #[jni]
+///     fn use_apply_string<'a>(
+///         trait_obj: Box<dyn ApplyString + 'a>,
+///         env: &mut JNIEnv<'a>,
+///     ) -> jni_bindgen::Result<String> {
+///         trait_obj.apply(env, "test".to_string())
 ///     }
 /// }
 /// ```
