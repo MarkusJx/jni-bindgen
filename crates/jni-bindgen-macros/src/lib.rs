@@ -74,14 +74,15 @@ mod util;
 ///
 /// # Examples
 /// ## Export a struct to java
-/// ```
-/// use jni_bindgen_macros::jni;
+/// ```ignore
+/// use jni_bindgen::jni;
+/// use jni_bindgen::objects::traits::{FromJNI, ObjectFromJNI};
 ///
 /// struct MyClass {
 ///     value: String,
 /// }
 ///
-/// #[jni(namespace = "com.github.markusjx.generated")]
+/// #[jni(namespace = "com.example.generated")]
 /// impl MyClass {
 ///     #[jni(constructor, rename = "newInstance")]
 ///     fn new(value: String) -> Self {
@@ -101,17 +102,18 @@ mod util;
 /// ```
 ///
 /// ## Export a trait to java
-/// ```
-/// use jni_bindgen_macros::jni;
+/// ```ignore
+/// use jni_bindgen::jni;
+/// use jni_bindgen::objects::traits::{FromJNI, ObjectFromJNI};
 ///
-/// #[jni(package = "com.github.markusjx.generated")]
+/// #[jni(package = "com.example.generated")]
 /// pub trait ApplyString {
 ///    fn apply(&self, env: &mut JNIEnv, val: String) -> jni_bindgen::Result<String>;
 /// }
 ///
 /// struct MyStruct;
 ///
-/// #[jni(package = "com.github.markusjx.generated", load_lib = "example_lib")]
+/// #[jni(package = "com.example.generated", load_lib = "example_lib")]
 /// impl MyStruct {
 ///    #[jni]
 ///     fn use_apply_string<'a>(
