@@ -1,0 +1,4 @@
+install:
+  - cd ./JNIBindgen
+  - ./gradlew clean install -xtest
+  - cp ./build/libs/JNIBindgen-*.jar $DEPLOY_DIR

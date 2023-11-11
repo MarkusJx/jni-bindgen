@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id "com.diffplug.spotless" version "6.22.0"
+    id "com.adarshr.test-logger" version "4.0.0"
 }
 
 group = 'com.github.markusjx.example'
