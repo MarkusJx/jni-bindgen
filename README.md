@@ -16,6 +16,22 @@ If you want to generate Java bindings for your Rust code, you must set the
 code should be placed. Alternatively, you can use the cli tool to generate the
 code.
 
+For the Java bindings to work, you need to add the `JNIBindgen` dependency to
+your Java project. The dependency is currently not available on Maven Central,
+but you can retrieve it using [JitPack](https://jitpack.io/#MarkusJx/jni-bindgen).
+For Gradle, you can add the following to your `build.gradle`:
+
+```groovy
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.MarkusJx:jni-bindgen:master-SNAPSHOT'
+}
+```
+
 ### Export a struct to Java
 
 ```rust
