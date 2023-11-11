@@ -1,3 +1,3 @@
 # Project exclude paths
-/java/JNIBindgen/.gradle/
+/JNIBindgen/.gradle/
 /target/
