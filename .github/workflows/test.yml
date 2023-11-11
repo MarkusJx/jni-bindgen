@@ -1,0 +1,29 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up gradle
+      uses: gradle/gradle-build-action@v2.9.0
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v2.7.0
+    - name: Build
+      run: cargo build --package example-lib
+      env:
+        JNI_BINDGEN_OUT_DIR: examples/ExampleModule/src/main/java
+    - name: Run tests
+      run: gradle test
+      working-directory: examples/ExampleModule
